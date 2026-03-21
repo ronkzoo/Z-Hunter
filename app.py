@@ -587,8 +587,28 @@ with tab_scan:
             
             if selected_res:
                 st.markdown("---")
-                st.subheader(f"📜 {selected_ticker_name} 상세 거래 내역")
                 
+                # 헤더 및 관심종목 추가 UI 영역을 콤팩트하게 구성
+                c_title, c_group, c_btn = st.columns([5, 2, 1.5])
+                with c_title:
+                    st.subheader(f"📜 {selected_ticker_name} 상세 거래 내역")
+                
+                # 티커 심볼 유추 (예: "AAPL (Apple)" -> AAPL, "005930 (삼성전자)" -> 005930)
+                raw_ticker = selected_ticker_name.split(" ")[0].strip()
+                
+                with c_group:
+                    if watchlists:
+                        target_group = st.selectbox("관심그룹 지정", list(watchlists.keys()), key=f"wc_group_{raw_ticker}", label_visibility="collapsed")
+                with c_btn:
+                    if watchlists:
+                        if st.button("⭐ 그룹에 추가", type="secondary", key=f"wc_add_{raw_ticker}"):
+                            if raw_ticker not in watchlists[target_group]:
+                                watchlists[target_group].append(raw_ticker)
+                                save_watchlists(watchlists)
+                                st.toast(f"✅ [{target_group}] 그룹에 {raw_ticker} 추가 완료!")
+                            else:
+                                st.toast(f"⚠️ 이미 [{target_group}] 그룹에 존재합니다.")
+
                 trade_logs = selected_res["상세내역"]
                 chart_df = selected_res.get("chart_data")
                 
