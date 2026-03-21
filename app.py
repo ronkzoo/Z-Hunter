@@ -108,6 +108,9 @@ def backtest_symbol(ticker, period="10y", initial_capital=10000000, stop_loss_ty
                     if stop_loss_type == "ADX 25 돌파 시 (추세 강제청산)" and adx >= 25:
                         sell_condition = True
                         sell_type = "📉 추세청산 (ADX 25+)"
+                    elif stop_loss_type == "-3% 수익률 손절" and profit_pct <= -3:
+                        sell_condition = True
+                        sell_type = "📉 손절 (-3%)"
                     elif stop_loss_type == "-5% 수익률 손절" and profit_pct <= -5:
                         sell_condition = True
                         sell_type = "📉 손절 (-5%)"
@@ -485,7 +488,7 @@ with tab_scan:
     min_trades = st.sidebar.number_input("최소 거래 횟수 기준", min_value=1, value=1)
     stop_loss_type = st.sidebar.selectbox(
         "손절 기준 (청산 전략)", 
-        ["ADX 25 돌파 시 (추세 강제청산)", "-5% 수익률 손절", "-10% 수익률 손절", "20일선 하향 돌파 시", "손절/강제청산 없음"]
+        ["ADX 25 돌파 시 (추세 강제청산)", "-3% 수익률 손절", "-5% 수익률 손절", "-10% 수익률 손절", "20일선 하향 돌파 시", "손절/강제청산 없음"]
     )
 
     if st.sidebar.button("🚀 스캔 시작 (Run Scanner)", type="primary"):

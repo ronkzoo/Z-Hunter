@@ -3,11 +3,11 @@ import pandas as pd
 import pandas_ta as ta
 import matplotlib.pyplot as plt
 
-def run_z_hunter_backtest(ticker, initial_capital=10000000):
-    print(f"🔄 [{ticker}] 과거 2년 데이터 백테스트 시작 (초기 자본: {initial_capital:,}원)")
+def run_z_hunter_backtest(ticker, name, initial_capital=10000000):
+    print(f"\n🔄 [{name}] 과거 10년 데이터 백테스트 시작 (초기 자본: {initial_capital:,}원)")
     
-    # 1. 데이터 준비 (최근 2년)
-    df = yf.download(ticker, period="5y", interval="1d", progress=False)
+    # 1. 데이터 준비 (최근 10년)
+    df = yf.download(ticker, period="10y", interval="1d", progress=False)
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
         
@@ -62,5 +62,14 @@ def run_z_hunter_backtest(ticker, initial_capital=10000000):
     print(f"💸 순수익금: {(capital - initial_capital):,.0f}원")
     print("-" * 50)
 
-# 실행: HMM 종목, 1천만 원으로 백테스트
-run_z_hunter_backtest("011200.KS", initial_capital=10000000)
+# 실행: 설정된 종목들, 1천만 원으로 백테스트
+if __name__ == "__main__":
+    targets = [
+        ("SPY", "S&P 500 ETF"),
+        ("QQQ", "NASDAQ 100 ETF"),
+        ("GLD", "Gold ETF (금)"),
+        ("KO", "Coca-Cola (코카콜라)"),
+        ("TLT", "미국 장기채 ETF")
+    ]
+    for ticker, name in targets:
+        run_z_hunter_backtest(ticker, name, initial_capital=10000000)

@@ -1,0 +1,35 @@
+name: Z-Hunter Daily Analysis
+
+on:
+  schedule:
+    # UTC 기준이므로 한국 시간(KST)에서 9시간을 뺍니다.
+    # 00:00 UTC = 09:00 KST (국내 개장)
+    # 13:30 UTC = 22:30 KST (미국 개장)
+    - cron: '0 0 * * *'
+    - cron: '30 13 * * *'
+  workflow_dispatch: # 수동으로도 실행 가능하게 설정
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Run Analysis
+      env:
+        # 이전에 설정한 GitHub Secrets에서 값을 가져옵니다.
+        TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+        CHAT_ID: ${{ secrets.CHAT_ID }}
+      run: python main.py

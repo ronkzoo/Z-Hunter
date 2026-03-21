@@ -90,14 +90,14 @@ def backtest_symbol(ticker, period="10y", initial_capital=10000000):
         return None
 
 def main():
-    print(f"🔍 총 {len(UNIVERSE)}개 주요 벤치마크 종목 대상 10년 치 Z-Hunter 로직 스캔 시작...\n")
+    print(f"🔍 총 {len(UNIVERSE)}개 주요 벤치마크 종목 대상 최근 3개월 치 Z-Hunter 로직 스캔 시작...\n")
     results = []
     
     for ticker in tqdm(UNIVERSE, desc="백테스트 진행 중", unit="종목"):
-        res = backtest_symbol(ticker, period="10y")
+        res = backtest_symbol(ticker, period="3mo")
         if res:
-            # 변동성이 너무 없어서 거래가 한두 번 일어난 종목 제외 (최소 10회 이상 거래 조건)
-            if res["Trades"] >= 10:
+            # 3개월처럼 짧은 기간에는 거래 횟수가 적으므로, 최소 거래 횟수 조건을 대폭 하향(1회 이상)
+            if res["Trades"] >= 1:
                 results.append(res)
                 
     # 결과 정렬 (1순위: 누적 수익률, 2순위: 승률)
