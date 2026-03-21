@@ -59,7 +59,7 @@ def create_z_score_chart(df, name, ticker):
                  xytext=(-40, 20), textcoords='offset points',
                  arrowprops=dict(arrowstyle="->", connectionstyle="arc3,rad=.2"))
 
-    plt.title(f'[{name}] Z-Score Mean Reversion Analyzer')
+    plt.title(f'[{ticker}] Z-Score Mean Reversion Analyzer')
     plt.xlabel('Date')
     plt.ylabel('Z-Score')
     plt.legend(loc='best')
@@ -174,9 +174,13 @@ if __name__ == "__main__":
     print("🤖 Z-Hunter Pro 가동을 시작합니다...")
     
     # 타겟 종목 리스트 (티커, 이름)
+    # Z-Hunter 전략(평균 회귀)에 최적화된 종목들로 구성
     targets = [
-        ("CL=F", "WTI Crude Oil"),
-        ("011200.KS", "HMM")
+        ("QQQ", "NASDAQ 100 ETF"),
+        ("SPY", "S&P 500 ETF"),
+        ("KO", "Coca-Cola (방어주)"),
+        ("GLD", "Gold ETF (금)"),
+        ("CL=F", "WTI Crude Oil (원유)")
     ]
     
     for ticker, name in targets:
