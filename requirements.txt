@@ -1,0 +1,8 @@
+pandas
+yfinance
+matplotlib
+requests
+python-dotenv
+pandas_tastreamlit
+plotly
+FinanceDataReader
