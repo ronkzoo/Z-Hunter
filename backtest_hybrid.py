@@ -17,7 +17,7 @@ def run_hybrid_backtest(ticker, initial_capital=10000000, fee=0.0025):
     print(f"🚀 [{ticker}] 하이브리드 전략 백테스트 시작...")
     
     # 1. 데이터 수집 및 지표 계산
-    df = yf.download(ticker, period="2y", interval="1d", progress=False)
+    df = yf.download(ticker, period="10y", interval="1d", progress=False)
     if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
     
     df['MA20'] = df['Close'].rolling(20).mean()
@@ -76,4 +76,4 @@ def run_hybrid_backtest(ticker, initial_capital=10000000, fee=0.0025):
     print(f"📈 총 수익률: {((capital-initial_capital)/initial_capital)*100:.2f}%")
 
 # HMM으로 테스트
-run_hybrid_backtest("011200.KS")
+run_hybrid_backtest("404120.KS")
