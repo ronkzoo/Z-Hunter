@@ -207,6 +207,159 @@ def backtest_symbol(ticker, period="10y", initial_capital=10000000, stop_loss_ty
     except Exception as e:
         return None
 
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def backtest_hybrid_symbol(ticker, period="3y", initial_capital=10000000, stop_loss_type="ADX 25 돌파 시 (추세 강제청산)"):
+    try:
+        df = yf.download(ticker, period=period, interval="1d", progress=False)
+        if df.empty or len(df) < 100:
+            return None
+            
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+            
+        df = df[['High', 'Low', 'Close']].copy()
+        
+        df['MA'] = df['Close'].rolling(window=20).mean()
+        df['STD'] = df['Close'].rolling(window=20).std()
+        df['Z-Score'] = (df['Close'] - df['MA']) / df['STD']
+        
+        adx_df = df.ta.adx(length=14)
+        df['ADX'] = adx_df['ADX_14'] if adx_df is not None else 0
+        
+        def _get_hurst(s):
+            lags = range(2, 20)
+            tau = [np.sqrt(np.std(np.subtract(s[lag:], s[:-lag]))) for lag in lags]
+            poly = np.polyfit(np.log(lags), np.log(tau), 1)
+            return poly[0] * 2.0
+            
+        df['Hurst'] = df['Close'].rolling(100).apply(_get_hurst, raw=True)
+        df.dropna(inplace=True)
+
+        capital = initial_capital
+        position = 0
+        buy_price = 0
+        buy_date = None
+        win_trades = 0
+        total_trades = 0
+        trade_logs = []
+        mode = ""
+
+        # df.iterrows is slow but sufficient
+        prices = df['Close'].values
+        zs = df['Z-Score'].values
+        adxs = df['ADX'].values
+        hursts = df['Hurst'].values
+        mas = df['MA'].values
+        dates = df.index
+        
+        for i in range(1, len(df)):
+            price = prices[i]
+            z = zs[i]
+            adx = adxs[i]
+            h = hursts[i]
+            ma = mas[i]
+            prev_price = prices[i-1]
+            prev_ma = mas[i-1]
+            
+            # extract string if datetiime
+            current_date = dates[i].strftime('%Y-%m-%d') if pd.notnull(dates[i]) else str(dates[i])
+            
+            if position == 0:
+                if h < 0.45 and z <= -2.0 and adx < 25:
+                    mode = "평균회귀(매수)"
+                    position = capital // price
+                    buy_price = price
+                    buy_date = current_date
+                    capital -= position * price
+                elif h > 0.55 and price > ma and prev_price <= prev_ma:
+                    mode = "강력추세(매수)"
+                    position = capital // price
+                    buy_price = price
+                    buy_date = current_date
+                    capital -= position * price
+                    
+            elif position > 0:
+                sell_condition = False
+                sell_type = ""
+                profit_pct = ((price - buy_price) / buy_price) * 100
+                
+                # 전략별 목표달성
+                if mode == "평균회귀(매수)" and z >= 0:
+                    sell_condition = True
+                    sell_type = "🎯 목표달성 (Z>=0)"
+                elif mode == "강력추세(매수)" and price < ma:
+                    sell_condition = True
+                    sell_type = "🎯 추세이탈 (MA20 미만)"
+                else:
+                    if stop_loss_type == "ADX 25 돌파 시 (추세 강제청산)" and adx >= 25 and mode == "평균회귀(매수)":
+                        sell_condition = True
+                        sell_type = "📉 추세청산 (ADX 25+)"
+                    elif stop_loss_type == "-3% 수익률 손절" and profit_pct <= -3:
+                        sell_condition = True
+                        sell_type = "📉 손절 (-3%)"
+                    elif stop_loss_type == "-5% 수익률 손절" and profit_pct <= -5:
+                        sell_condition = True
+                        sell_type = "📉 손절 (-5%)"
+                    elif stop_loss_type == "-10% 수익률 손절" and profit_pct <= -10:
+                        sell_condition = True
+                        sell_type = "📉 손절 (-10%)"
+                    elif stop_loss_type == "20일선 하향 돌파 시" and price < ma:
+                        sell_condition = True
+                        sell_type = "📉 추세이탈 (20일선 미만)"
+                        
+                if sell_condition:
+                    capital += position * price
+                    if price > buy_price:
+                        win_trades += 1
+                    total_trades += 1
+                    trade_logs.append({
+                        "매수일자": buy_date,
+                        "매도일자": current_date,
+                        "진입전략": mode,
+                        "매도사유": sell_type,
+                        "매수가": f"{round(buy_price, 2):,}",
+                        "매도가": f"{round(price, 2):,}",
+                        "수익률(%)": f"{round(profit_pct, 2):.2f}",
+                        "거래금액": f"{int(position * price):,}"
+                    })
+                    position = 0
+                    
+        if position > 0:
+            last_price = prices[-1]
+            last_date = dates[-1].strftime('%Y-%m-%d')
+            capital += position * last_price
+            profit_pct = ((last_price - buy_price) / buy_price) * 100
+            if last_price > buy_price:
+                win_trades += 1
+            total_trades += 1
+            trade_logs.append({
+                "매수일자": buy_date,
+                "매도일자": last_date,
+                "진입전략": mode,
+                "매도사유": "보유중 (마지막 종가 평가)",
+                "매수가": f"{round(buy_price, 2):,}",
+                "매도가": f"{round(last_price, 2):,}",
+                "수익률(%)": f"{round(profit_pct, 2):.2f}",
+                "거래금액": f"{int(position * last_price):,}"
+            })
+            position = 0
+
+        total_return = ((capital - initial_capital) / initial_capital) * 100
+        win_rate = (win_trades / total_trades * 100) if total_trades > 0 else 0
+        
+        return {
+            "티커표시": f"{ticker} ({get_ticker_name(ticker)})",
+            "수익률(%)": f"{round(total_return, 2):.2f}",
+            "총수익금(원)": f"{int(capital - initial_capital):,}",
+            "최종잔고(원)": f"{int(capital):,}",
+            "승률(%)": f"{round(win_rate, 2):.2f}",
+            "거래횟수": total_trades,
+            "상세내역": trade_logs,
+            "chart_data": df[['Close']].reset_index(),
+        }
+    except Exception as e:
+        return None
 # --- 관심그룹 관리 로직 ---
 WATCHLIST_FILE = "watchlists.json"
 
@@ -655,6 +808,7 @@ with tab_watch:
 
 with tab_scan:
     st.sidebar.header("⚙️ 스캐너 설정")
+    scan_strategy = st.sidebar.selectbox("백테스트 전략", ["기본 평균회귀 (Z-Score)", "하이브리드 (Regime Switching)"])
     scan_target = st.sidebar.selectbox("스캔 대상 선택", ["기본 유니버스 (50종목)"] + list(watchlists.keys()))
     initial_capital = st.sidebar.number_input("초기 투자금 (원)", min_value=100000, value=10000000, step=1000000, format="%d")
     period = st.sidebar.selectbox("테스트할 기간 선택", ["1mo", "3mo", "6mo", "1y", "3y", "5y", "10y"], index=4) # 기본 3y
@@ -686,7 +840,11 @@ with tab_scan:
         for i, ticker in enumerate(tickers):
             status_text.text(f"스캔 중: {ticker} ({i+1}/{total_tickers})")
             
-            res = backtest_symbol(ticker, period=period, initial_capital=initial_capital, stop_loss_type=stop_loss_type)
+            if scan_strategy == "하이브리드 (Regime Switching)":
+                res = backtest_hybrid_symbol(ticker, period=period, initial_capital=initial_capital, stop_loss_type=stop_loss_type)
+            else:
+                res = backtest_symbol(ticker, period=period, initial_capital=initial_capital, stop_loss_type=stop_loss_type)
+                
             if res and res["거래횟수"] >= min_trades:
                 results.append(res)
                 
@@ -696,7 +854,7 @@ with tab_scan:
         
         if results:
             st.session_state["scan_results"] = results
-            st.session_state["scan_meta"] = {"period": period, "capital": initial_capital, "stop_loss": stop_loss_type}
+            st.session_state["scan_meta"] = {"period": period, "capital": initial_capital, "stop_loss": stop_loss_type, "strategy": scan_strategy}
         else:
             st.session_state["scan_results"] = []
             st.warning("조건(최소 거래횟수 등)을 만족하는 종목이 없습니다. 기간이나 조건을 완화해 보세요.")
@@ -707,7 +865,7 @@ with tab_scan:
         
         st.markdown("---")
         st.markdown(f"### 📊 {meta.get('period', period)} 백테스트 결과 (투자금: {meta.get('capital', initial_capital):,}원)")
-        st.markdown(f"**적용된 청산 전략:** `{meta.get('stop_loss', stop_loss_type)}`")
+        st.markdown(f"**적용 전략:** `{meta.get('strategy', '기본 평균회귀 (Z-Score)')}` | **청산 전략:** `{meta.get('stop_loss', stop_loss_type)}`")
         
         # 데이터프레임 변환 및 정렬
         df_results = pd.DataFrame(results)
