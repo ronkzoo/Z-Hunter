@@ -645,6 +645,7 @@ with tab_hybrid:
         progress_bar_hy = st.progress(0)
         status_text_hy = st.empty()
         
+
         if hybrid_target == "기본 유니버스 (50종목)":
             hy_tickers = list(UNIVERSE_DICT.keys())
         else:
@@ -663,44 +664,98 @@ with tab_hybrid:
                 progress_bar_hy.progress((i + 1) / total_hy)
                 
             status_text_hy.text("✅ 하이브리드 분석 완료!")
+            st.session_state["hy_results"] = hy_results
+            st.session_state["hy_meta"] = {"target": hybrid_target}
             
-            if hy_results:
-                df_hy = pd.DataFrame(hy_results)
-                
-                # 분리해서 보여주기
-                df_buy = df_hy[df_hy["현황 분류"] == "🎯 평균회귀 사냥(매수)"]
-                df_sell = df_hy[df_hy["현황 분류"] == "💰 평균회귀 수확(매도)"]
-                df_trend = df_hy[df_hy["현황 분류"] == "🌊 강력 추세 탑승(매수)"]
-                df_wait = df_hy[df_hy["현황 분류"] == "⏳ 관망"]
-                
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.subheader("🎯 [박스권-매수] 낙폭 과대 (단기반등 기대)")
-                    if not df_buy.empty:
-                        st.dataframe(df_buy.drop(columns=["현황 분류"]), hide_index=True, use_container_width=True)
-                    else:
-                        st.info("조건에 맞는 종목이 없습니다.")
-                        
-                    st.subheader("🌊 [추세장-매수] 강력 상승 (불장 탑승)")
-                    if not df_trend.empty:
-                        st.dataframe(df_trend.drop(columns=["현황 분류"]), hide_index=True, use_container_width=True)
-                    else:
-                        st.info("조건에 맞는 종목이 없습니다.")
-                        
-                with col2:
-                    st.subheader("💰 [박스권-매도] 반등 고점 도달 (수확)")
-                    if not df_sell.empty:
-                        st.dataframe(df_sell.drop(columns=["현황 분류"]), hide_index=True, use_container_width=True)
-                    else:
-                        st.info("조건에 맞는 종목이 없습니다.")
-                        
-                    with st.expander("⏳ 관망 종목 전체 보기 (랜덤 워크)"):
-                        if not df_wait.empty:
-                            st.dataframe(df_wait.drop(columns=["현황 분류"]), hide_index=True, use_container_width=True)
-                        else:
-                            st.info("조건에 맞는 종목이 없습니다.")
+    if "hy_results" in st.session_state and st.session_state["hy_results"]:
+        hy_results = st.session_state["hy_results"]
+        df_hy = pd.DataFrame(hy_results)
+        
+        st.markdown("---")
+        st.markdown(f"### 📊 분석 결과 (대상: `{st.session_state.get('hy_meta', {}).get('target', '선택 그룹')}`)")
+        
+        # 분리해서 보여주기
+        df_buy = df_hy[df_hy["현황 분류"] == "🎯 평균회귀 사냥(매수)"].reset_index(drop=True)
+        df_sell = df_hy[df_hy["현황 분류"] == "💰 평균회귀 수확(매도)"].reset_index(drop=True)
+        df_trend = df_hy[df_hy["현황 분류"] == "🌊 강력 추세 탑승(매수)"].reset_index(drop=True)
+        df_wait = df_hy[df_hy["현황 분류"] == "⏳ 관망"].reset_index(drop=True)
+        
+        col1, col2 = st.columns(2)
+        events = {}
+        
+        with col1:
+            st.subheader("🎯 [박스권-매수] 낙폭 과대 (단기반등 기대)")
+            if not df_buy.empty:
+                events['buy'] = st.dataframe(df_buy.drop(columns=["현황 분류"]), hide_index=True, use_container_width=True, on_select="rerun", selection_mode=["single-row"], key="hy_df_buy")
             else:
-                st.warning("분석 가능한 데이터가 없습니다.")
+                st.info("조건에 맞는 종목이 없습니다.")
+                
+            st.subheader("🌊 [추세장-매수] 강력 상승 (불장 탑승)")
+            if not df_trend.empty:
+                events['trend'] = st.dataframe(df_trend.drop(columns=["현황 분류"]), hide_index=True, use_container_width=True, on_select="rerun", selection_mode=["single-row"], key="hy_df_trend")
+            else:
+                st.info("조건에 맞는 종목이 없습니다.")
+                
+        with col2:
+            st.subheader("💰 [박스권-매도] 반등 고점 도달 (수확)")
+            if not df_sell.empty:
+                events['sell'] = st.dataframe(df_sell.drop(columns=["현황 분류"]), hide_index=True, use_container_width=True, on_select="rerun", selection_mode=["single-row"], key="hy_df_sell")
+            else:
+                st.info("조건에 맞는 종목이 없습니다.")
+                
+            with st.expander("⏳ 관망 종목 전체 보기 (랜덤 워크)"):
+                if not df_wait.empty:
+                    events['wait'] = st.dataframe(df_wait.drop(columns=["현황 분류"]), hide_index=True, use_container_width=True, on_select="rerun", selection_mode=["single-row"], key="hy_df_wait")
+                else:
+                    st.info("조건에 맞는 종목이 없습니다.")
+        
+        # 선택된 종목 계산
+        selected_ticker = None
+        for k, e in events.items():
+            if e and e.selection.get("rows"):
+                idx = e.selection.get("rows")[0]
+                if k == 'buy': selected_ticker = df_buy.iloc[idx]["티커"]
+                elif k == 'trend': selected_ticker = df_trend.iloc[idx]["티커"]
+                elif k == 'sell': selected_ticker = df_sell.iloc[idx]["티커"]
+                elif k == 'wait': selected_ticker = df_wait.iloc[idx]["티커"]
+                break
+                
+        if selected_ticker:
+            st.markdown("---")
+            st.subheader(f"📈 {selected_ticker} ({get_ticker_name(selected_ticker)}) - 최근 1년 차트")
+            with st.spinner("차트 데이터 불러오는 중..."):
+                chart_df = yf.download(selected_ticker, period="1y", interval="1d", progress=False)
+                if not chart_df.empty:
+                    if isinstance(chart_df.columns, pd.MultiIndex):
+                        chart_df.columns = chart_df.columns.get_level_values(0)
+                    # plotly 차트 렌더링
+                    import plotly.graph_objects as go
+                    
+                    fig = go.Figure()
+                    fig.add_trace(go.Candlestick(x=chart_df.index,
+                        open=chart_df['Open'],
+                        high=chart_df['High'],
+                        low=chart_df['Low'],
+                        close=chart_df['Close'],
+                        name='Price',
+                        increasing_line_color='red', decreasing_line_color='blue'))
+                        
+                    # MA20 추가
+                    chart_df['MA20'] = chart_df['Close'].rolling(20).mean()
+                    fig.add_trace(go.Scatter(x=chart_df.index, y=chart_df['MA20'], mode='lines', name='MA20', line=dict(color='orange', width=1)))
+                    
+                    fig.update_layout(
+                        title=f"{selected_ticker} Daily Chart",
+                        xaxis_disable_scales="min",
+                        xaxis_rangeslider_visible=False,
+                        template="plotly_dark",
+                        height=500,
+                        margin=dict(l=0, r=0, t=40, b=0)
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+                else:
+                    st.warning("차트 데이터를 가져올 수 없습니다.")
+
 
 with tab_watch:
     st.header("⭐ 관심그룹 관리")
