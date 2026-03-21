@@ -363,7 +363,7 @@ def backtest_hybrid_symbol(ticker, period="3y", initial_capital=10000000, stop_l
             # log format: Date, Regime, Type, Entry Price, Exit Price, Net PnL, Return(%)
             strategy_name = "평균회귀(매수)" if log['Regime'] == 'MR' else "강력추세(매수)"
             trade_logs.append({
-                "매수일자": "-", # 포지션 진입 시 Date는 스크립트 특성상 현재 미기록, 매도일자로 대체
+                "매수일자": log.get('Entry Date', '-'),
                 "매도일자": log['Date'],
                 "진입전략": strategy_name,
                 "매도사유": log['Type'],

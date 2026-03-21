@@ -10,10 +10,9 @@ class DualRegimeRiskManager:
     Hurst Exponent를 이용한 Regime Switching 및 국면별 차등 Stop-Loss 메커니즘 구현
     """
     
-    def __init__(self, ticker: str, start_date: str, end_date: str, initial_capital: float = 10000000):
+    def __init__(self, ticker: str, period: str = "3y", initial_capital: float = 10000000):
         self.ticker = ticker
-        self.start_date = start_date
-        self.end_date = end_date
+        self.period = period
         self.initial_capital = initial_capital
         
         # 거래 비용 (진입/청산 왕복 0.25% -> 편도 0.125%)
@@ -32,7 +31,7 @@ class DualRegimeRiskManager:
 
     def prepare_market_data(self) -> pd.DataFrame:
         """시장 데이터 다운로드 및 국면/리스크 기술적 지표 생성"""
-        df = yf.download(self.ticker, start=self.start_date, end=self.end_date, progress=False)
+        df = yf.download(self.ticker, period=self.period, interval="1d", progress=False)
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
             
@@ -67,6 +66,7 @@ class DualRegimeRiskManager:
         capital = self.initial_capital
         position = 0
         entry_price = 0.0
+        entry_date = None
         mode = None               # 'MR' (Mean Reversion) or 'TF' (Trend Following)
         trailing_stop_price = 0.0
         
@@ -120,6 +120,7 @@ class DualRegimeRiskManager:
                     
                     self.trade_logs.append({
                         "Date": date.strftime('%Y-%m-%d'),
+                        "Entry Date": entry_date,
                         "Regime": mode,
                         "Type": reason,
                         "Entry Price": round(entry_price, 2),
@@ -148,6 +149,7 @@ class DualRegimeRiskManager:
                     buy_size = capital * (1 - self.tx_cost)
                     position = buy_size / close
                     entry_price = close
+                    entry_date = date.strftime("%Y-%m-%d")
                     capital -= (buy_size + capital * self.tx_cost)
 
             # Mark to Market (일일 자본금 평가)
