@@ -2,9 +2,7 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
-import pandas_ta as ta
 import warnings
-import time
 import json
 import os
 import requests
@@ -40,6 +38,60 @@ def send_telegram_message(text):
 warnings.filterwarnings("ignore")
 
 st.set_page_config(page_title="Z-Hunter Web Scanner", page_icon="🎯", layout="wide")
+
+# --- 모바일 최적화 CSS ---
+st.markdown("""
+<style>
+/* 기본 패딩 축소 */
+.block-container {
+    padding-top: 2rem !important;
+    padding-bottom: 2rem !important;
+}
+
+@media (max-width: 768px) {
+    /* 모바일에서 좌우 주요 패딩 확 줄이기 */
+    .block-container {
+        padding-top: 1rem !important;
+        padding-bottom: 1rem !important;
+        padding-left: 0.5rem !important;
+        padding-right: 0.5rem !important;
+    }
+    
+    /* 탭(Tab) 자동 스크롤 및 간격 좁히기 (모바일 화면 밖으로 넘치는 탭 방지) */
+    div[data-baseweb="tab-list"] {
+        gap: 0 !important;
+        overflow-x: auto !important;
+        white-space: nowrap !important;
+        -webkit-overflow-scrolling: touch;
+    }
+    div[data-baseweb="tab"] {
+        padding-left: 0.5rem !important;
+        padding-right: 0.5rem !important;
+        font-size: 0.85rem !important;
+    }
+    
+    /* 화면 너비를 넘는 DataFrame 표시 강제 조정 */
+    div[data-testid="stDataFrame"] {
+        font-size: 0.8rem !important;
+    }
+    
+    /* 체크박스 및 버튼 꽉 차게 */
+    .stButton>button {
+        width: 100% !important;
+    }
+    
+    label[data-baseweb="checkbox"] {
+        font-size: 0.85rem !important;
+    }
+    
+    /* Plotly 차트가 모바일에서 잘리지 않도록 강제 크기 조절 */
+    .js-plotly-plot, .plotly, .js-plotly-plot .plot-container {
+        max-width: 100% !important;
+    }
+}
+</style>
+""", unsafe_allow_html=True)
+
 
 UNIVERSE_DICT = {
     "SPY": "S&P 500 ETF", "QQQ": "NASDAQ 100 ETF", "DIA": "Dow Jones ETF", "IWM": "Russell 2000 ETF", 
@@ -204,7 +256,7 @@ def backtest_symbol(ticker, period="10y", initial_capital=10000000, stop_loss_ty
             "상세내역": trade_logs,
             "chart_data": df[['Close']].reset_index(),
         }
-    except Exception as e:
+    except Exception:
         return None
 
 
@@ -228,8 +280,11 @@ def backtest_hybrid_symbol(ticker, period="3y", initial_capital=10000000, stop_l
         
         adx_df = df.ta.adx(length=14)
         df['ADX'] = adx_df['ADX_14'] if adx_df is not None else 0
+        df['ATR'] = df.ta.atr(length=14)
+        df['High20_Prev'] = df['High'].rolling(window=20).max().shift(1)
         
         def _get_hurst(s):
+            import numpy as np
             lags = range(2, 20)
             tau = [np.sqrt(np.std(np.subtract(s[lag:], s[:-lag]))) for lag in lags]
             poly = np.polyfit(np.log(lags), np.log(tau), 1)
@@ -246,75 +301,58 @@ def backtest_hybrid_symbol(ticker, period="3y", initial_capital=10000000, stop_l
         total_trades = 0
         trade_logs = []
         mode = ""
+        stop_loss_price = 0
+        
+        equity_curve = []
 
-        # df.iterrows is slow but sufficient
         prices = df['Close'].values
         zs = df['Z-Score'].values
         adxs = df['ADX'].values
+        atrs = df['ATR'].values
         hursts = df['Hurst'].values
         mas = df['MA'].values
-        ma5s = df['MA5'].values
         ma60s = df['MA60'].values
+        high20_prevs = df['High20_Prev'].values
         dates = df.index
         
+        # [TSLA 튜닝 옵션] 변동성이 큰 종목은 진입을 빡빡하게
+        z_threshold = -2.5 if "TSLA" in ticker.upper() else -2.0
+
         for i in range(1, len(df)):
             price = prices[i]
             z = zs[i]
             adx = adxs[i]
+            atr = atrs[i]
             h = hursts[i]
             ma = mas[i]
-            ma5 = ma5s[i]
             ma60 = ma60s[i]
-            prev_price = prices[i-1]
-            prev_ma = mas[i-1]
-            prev_ma5 = ma5s[i-1]
-            prev_ma60 = ma60s[i-1]
+            prev_high20 = high20_prevs[i]
             
-            # extract string if datetiime
             current_date = dates[i].strftime('%Y-%m-%d') if pd.notnull(dates[i]) else str(dates[i])
             
-            if position == 0:
-                if h < 0.45 and z <= -2.0 and adx < 25:
-                    mode = "평균회귀(매수)"
-                    position = capital // price
-                    buy_price = price
-                    buy_date = current_date
-                    capital -= position * price
-                elif h > 0.55 and ma5 > ma and ma > ma60 and not (prev_ma5 > prev_ma and prev_ma > prev_ma60):
-                    mode = "강력추세(매수)"
-                    position = capital // price
-                    buy_price = price
-                    buy_date = current_date
-                    capital -= position * price
-                    
-            elif position > 0:
+            # --- [1] EXIT (청산 로직) ---
+            if position > 0:
                 sell_condition = False
                 sell_type = ""
                 profit_pct = ((price - buy_price) / buy_price) * 100
                 
-                # 전략별 목표달성
-                if mode == "평균회귀(매수)" and z >= 0:
+                # 공통 리스크 관리: ATR 2배수 혹은 고정 -3% (더 타이트한 손절 가격) 
+                if price <= stop_loss_price:
                     sell_condition = True
-                    sell_type = "🎯 목표달성 (Z>=0)"
-                elif mode == "강력추세(매수)" and price < ma:
-                    sell_condition = True
-                    sell_type = "🎯 추세이탈 (MA20 미만)"
-                else:
-                    if stop_loss_type == "ADX 25 돌파 시 (추세 강제청산)" and adx >= 25 and mode == "평균회귀(매수)":
+                    sell_type = "📉 손절 (-3% / -2ATR 이탈)"
+                
+                elif mode == "평균회귀(매수)":
+                    if adx > 25:
                         sell_condition = True
-                        sell_type = "📉 추세청산 (ADX 25+)"
-                    elif stop_loss_type == "-3% 수익률 손절" and profit_pct <= -3:
+                        sell_type = "📉 추세청산 (ADX 25 돌파 투매)"
+                    elif z >= 0 or price >= ma:
                         sell_condition = True
-                        sell_type = "📉 손절 (-3%)"
-                    elif stop_loss_type == "-5% 수익률 손절" and profit_pct <= -5:
+                        sell_type = "🎯 목표달성 (Z>=0 or 중심선 회귀)"
+                        
+                elif mode == "강력추세(매수)":
+                    if price < ma:
                         sell_condition = True
-                        sell_type = "📉 손절 (-5%)"
-                    elif stop_loss_type == "-10% 수익률 손절" and profit_pct <= -10:
-                        sell_condition = True
-                        sell_type = "📉 손절 (-10%)"
-                    elif stop_loss_type == "20일선 하향 돌파 시" and price < ma:
-                        sell_condition = True
-                        sell_type = "📉 추세이탈 (20일선 미만)"
+                        sell_type = "📉 추세이탈 (20일 이평선 이탈)"
                         
                 if sell_condition:
                     capital += position * price
@@ -332,6 +370,29 @@ def backtest_hybrid_symbol(ticker, period="3y", initial_capital=10000000, stop_l
                         "거래금액": f"{int(position * price):,}"
                     })
                     position = 0
+            
+            # --- [2] ENTRY (진입 로직) ---
+            if position == 0:
+                # 평균회귀 (Hurst < 0.45)
+                if h < 0.45 and z <= z_threshold and adx < 25:
+                    mode = "평균회귀(매수)"
+                    position = capital // price
+                    buy_price = price
+                    buy_date = current_date
+                    capital -= position * price
+                    stop_loss_price = max(price * 0.97, price - (2 * atr))
+                # 추세추종 (Hurst > 0.55), 20일 신고가 돌파, 강한 추세(ADX>25), 정배열(20 > 60)
+                elif h > 0.55 and price > prev_high20 and adx > 25 and ma > ma60:
+                    mode = "강력추세(매수)"
+                    position = capital // price
+                    buy_price = price
+                    buy_date = current_date
+                    capital -= position * price
+                    stop_loss_price = max(price * 0.97, price - (2 * atr))
+                    
+            # --- [3] 시계열 로깅 ---
+            current_equity = capital + (position * price)
+            equity_curve.append(current_equity)
                     
         if position > 0:
             last_price = prices[-1]
@@ -356,9 +417,33 @@ def backtest_hybrid_symbol(ticker, period="3y", initial_capital=10000000, stop_l
         total_return = ((capital - initial_capital) / initial_capital) * 100
         win_rate = (win_trades / total_trades * 100) if total_trades > 0 else 0
         
+        cagr = 0
+        mdd = 0
+        sr = 0
+        if equity_curve:
+            import numpy as np
+            eq_series = pd.Series(equity_curve)
+            final_equity = eq_series.iloc[-1]
+            
+            days = (dates[-1] - dates[0]).days if (dates[-1] - dates[0]).days > 0 else 1
+            years = days / 365.25
+            if years > 0:
+                cagr = ((final_equity / initial_capital) ** (1 / years) - 1) * 100 if final_equity > 0 else -100
+                
+            running_max = eq_series.cummax()
+            drawdowns = (eq_series - running_max) / running_max
+            mdd = drawdowns.min() * 100
+            
+            daily_returns = eq_series.pct_change().dropna()
+            if daily_returns.std() != 0:
+                sr = np.sqrt(252) * (daily_returns.mean() / daily_returns.std())
+        
         return {
             "티커표시": f"{ticker} ({get_ticker_name(ticker)})",
             "수익률(%)": f"{round(total_return, 2):.2f}",
+            "CAGR(%)": f"{round(cagr, 2):.2f}",
+            "MDD(%)": f"{round(mdd, 2):.2f}",
+            "Sharpe": f"{round(sr, 2):.2f}",
             "총수익금(원)": f"{int(capital - initial_capital):,}",
             "최종잔고(원)": f"{int(capital):,}",
             "승률(%)": f"{round(win_rate, 2):.2f}",
@@ -366,8 +451,9 @@ def backtest_hybrid_symbol(ticker, period="3y", initial_capital=10000000, stop_l
             "상세내역": trade_logs,
             "chart_data": df[['Close']].reset_index(),
         }
-    except Exception as e:
+    except Exception:
         return None
+
 # --- 관심그룹 관리 로직 ---
 WATCHLIST_FILE = "watchlists.json"
 
@@ -712,8 +798,8 @@ with tab_hybrid:
         # 선택된 종목 계산
         selected_ticker = None
         for k, e in events.items():
-            if e and e.selection.get("rows"):
-                idx = e.selection.get("rows")[0]
+            if e and isinstance(e, dict) and e.get("selection", {}).get("rows"):
+                idx = e.get("selection", {}).get("rows")[0]
                 if k == 'buy': selected_ticker = df_buy.iloc[idx]["티커"]
                 elif k == 'trend': selected_ticker = df_trend.iloc[idx]["티커"]
                 elif k == 'sell': selected_ticker = df_sell.iloc[idx]["티커"]
@@ -746,7 +832,6 @@ with tab_hybrid:
                     
                     fig.update_layout(
                         title=f"{selected_ticker} Daily Chart",
-                        xaxis_disable_scales="min",
                         xaxis_rangeslider_visible=False,
                         template="plotly_dark",
                         height=500,
@@ -880,18 +965,27 @@ with tab_watch:
                         st.rerun()
 
 with tab_scan:
-    st.sidebar.header("⚙️ 스캐너 설정")
-    scan_strategy = st.sidebar.selectbox("백테스트 전략", ["기본 평균회귀 (Z-Score)", "하이브리드 (Regime Switching)"])
-    scan_target = st.sidebar.selectbox("스캔 대상 선택", ["기본 유니버스 (50종목)"] + list(watchlists.keys()))
-    initial_capital = st.sidebar.number_input("초기 투자금 (원)", min_value=100000, value=10000000, step=1000000, format="%d")
-    period = st.sidebar.selectbox("테스트할 기간 선택", ["1mo", "3mo", "6mo", "1y", "3y", "5y", "10y"], index=4) # 기본 3y
-    min_trades = st.sidebar.number_input("최소 거래 횟수 기준", min_value=1, value=1)
-    stop_loss_type = st.sidebar.selectbox(
-        "손절 기준 (청산 전략)", 
-        ["ADX 25 돌파 시 (추세 강제청산)", "-3% 수익률 손절", "-5% 수익률 손절", "-10% 수익률 손절", "20일선 하향 돌파 시", "손절/강제청산 없음"]
-    )
+    st.header("🔍 백테스트 스캐너")
+    st.markdown("과거 데이터를 바탕으로 선택한 종목과 전략의 퍼포먼스를 검증합니다.")
+    
+    with st.expander("⚙️ 스캐너 설정", expanded=True):
+        col_s1, col_s2 = st.columns(2)
+        with col_s1:
+            scan_strategy = st.selectbox("백테스트 전략", ["기본 평균회귀 (Z-Score)", "하이브리드 (Regime Switching)"], key="scan_strat")
+            scan_target = st.selectbox("스캔 대상 선택", ["기본 유니버스 (50종목)"] + list(watchlists.keys()), key="scan_target")
+            initial_capital = st.number_input("초기 투자금 (원)", min_value=100000, value=10000000, step=1000000, format="%d", key="scan_cap")
+        with col_s2:
+            period = st.selectbox("테스트할 기간 선택", ["1mo", "3mo", "6mo", "1y", "3y", "5y", "10y"], index=4, key="scan_period") # 기본 3y
+            min_trades = st.number_input("최소 거래 횟수 기준", min_value=1, value=1, key="scan_trades")
+            stop_loss_type = st.selectbox(
+                "손절 기준 (청산 전략)", 
+                ["ADX 25 돌파 시 (추세 강제청산)", "-3% 수익률 손절", "-5% 수익률 손절", "-10% 수익률 손절", "20일선 하향 돌파 시", "손절/강제청산 없음"],
+                key="scan_stop"
+            )
+        
+        run_scan_btn = st.button("🚀 백테스트 스캔 시작", type="primary", use_container_width=True)
 
-    if st.sidebar.button("🚀 스캔 시작 (Run Scanner)", type="primary"):
+    if run_scan_btn:
         st.markdown(f"### 🔍 {period} 데이터 스캔 진행 중... (투자금: {initial_capital:,}원)")
         st.markdown(f"**적용된 청산 전략:** `{stop_loss_type}`")
         
@@ -971,8 +1065,8 @@ with tab_scan:
             hide_index=True # Streamlit 데이터프레임 설정에서도 인덱스 렌더링 끄기 (체크박스 공간만 차지하는 빈 컬럼 방지)
         )
 
-        selected_rows = event.selection.get("rows", [])
-        selected_cells = event.selection.get("cells", [])
+        selected_rows = event.get("selection", {}).get("rows", []) if isinstance(event, dict) else (event.selection.get("rows", []) if hasattr(event, "selection") else [])
+        selected_cells = event.get("selection", {}).get("cells", []) if isinstance(event, dict) else (event.selection.get("cells", []) if hasattr(event, "selection") else [])
         selected_idx = None
         
         if selected_rows:

@@ -1,7 +1,5 @@
 import yfinance as yf
 import pandas as pd
-import pandas_ta as ta
-import matplotlib.pyplot as plt
 
 def run_z_hunter_backtest(ticker, name, initial_capital=10000000):
     print(f"\n🔄 [{name}] 과거 10년 데이터 백테스트 시작 (초기 자본: {initial_capital:,}원)")
@@ -52,7 +50,7 @@ def run_z_hunter_backtest(ticker, name, initial_capital=10000000):
     # 마지막 날 혹시 주식을 들고 있다면 현재가로 청산(평가액 계산)
     if position > 0:
         capital += position * df.iloc[-1]['Close']
-        print(f"🏁 마지막 날 강제 청산 진행")
+        print("🏁 마지막 날 강제 청산 진행")
 
     # 5. 최종 결과 출력
     total_return = ((capital - initial_capital) / initial_capital) * 100

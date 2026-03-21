@@ -1,6 +1,5 @@
 import yfinance as yf
 import pandas as pd
-import numpy as np
 
 def run_universe_z_score_backtest(tickers, start_date="2016-01-01", end_date="2026-03-21"):
     print(f"🚀 {len(tickers)}개 종목 Z-Score 유니버스 백테스트 시작...")
@@ -42,7 +41,7 @@ def run_universe_z_score_backtest(tickers, start_date="2016-01-01", end_date="20
                 'Total_Return(%)': round(total_return * 100, 2),
                 'Win_Rate(%)': round(win_rate * 100, 2)
             })
-        except Exception as e:
+        except Exception:
             continue
             
     # 결과 요약

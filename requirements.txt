@@ -3,6 +3,7 @@ yfinance
 matplotlib
 requests
 python-dotenv
-pandas_tastreamlit
+pandas_ta
+streamlit
 plotly
-FinanceDataReader
+finance-datareader

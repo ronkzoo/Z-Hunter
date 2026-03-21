@@ -2,7 +2,6 @@ import os
 import requests
 import yfinance as yf
 import pandas as pd
-import pandas_ta as ta  # ADX 계산용
 import matplotlib.pyplot as plt
 from dotenv import load_dotenv
 
@@ -31,7 +30,7 @@ def send_telegram_photo(photo_path, caption):
             data = {'chat_id': CHAT_ID, 'caption': caption}
             response = requests.post(url, files=files, data=data)
             response.raise_for_status()
-            print(f"✅ 텔레그램 메시지 전송 성공!")
+            print("✅ 텔레그램 메시지 전송 성공!")
     except Exception as e:
         print(f"❌ 텔레그램 전송 실패: {e}")
 

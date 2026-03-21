@@ -1,6 +1,5 @@
 import yfinance as yf
 import pandas as pd
-import pandas_ta as ta
 import warnings
 from tqdm import tqdm
 
@@ -86,7 +85,7 @@ def backtest_symbol(ticker, period="10y", initial_capital=10000000):
             "Win Rate(%)": round(win_rate, 2),
             "Trades": total_trades
         }
-    except Exception as e:
+    except Exception:
         return None
 
 def main():

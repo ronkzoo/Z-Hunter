@@ -1,6 +1,5 @@
 import yfinance as yf
 import pandas as pd
-import pandas_ta as ta
 
 def run_backtest(ticker, name, period="3y", initial_capital=10000000, window=20):
     data = yf.download(ticker, period=period, interval="1d", progress=False)

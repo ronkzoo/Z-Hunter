@@ -1,5 +1,6 @@
+import streamlit as st
+
 import FinanceDataReader as fdr
-import pandas as pd
 
 @st.cache_data(ttl=86400) # cache for 1 day
 def get_krx_stocks():

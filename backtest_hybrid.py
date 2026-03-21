@@ -1,7 +1,6 @@
 import yfinance as yf
 import pandas as pd
 import numpy as np
-import pandas_ta as ta
 
 def calculate_hurst(series, window=100):
     """허스트 지수 계산 (최근 window 기간 기준)"""
