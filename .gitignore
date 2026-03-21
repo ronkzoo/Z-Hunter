@@ -3,3 +3,4 @@ __pycache__/
 *.png
 venv/
 /envticker_names.json
+env/
