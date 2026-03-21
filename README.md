@@ -78,3 +78,8 @@ python main.py
 ```
 
 
+
+### 🔥 Recent Updates
+- **⚡ 종목 맞춤형 튜닝 (Stock Specific Tuning)**: TSLA와 같이 변동성이 큰 종목은 Z-Score 임계값을 -2.5로 조정하여 노이즈를 필터링
+- **🛡️ 리스크 관리 (Risk Management)**: ATR(Average True Range)을 활용한 동적 손절선(Trailing Stop) 적용
+- **📱 모바일 최적화 UI**: 모바일 환경에서도 쾌적하게 사용할 수 있도록 반응형 UI 및 탭별 독립적인 설정 패널(Expander) 제공
