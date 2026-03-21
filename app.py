@@ -54,6 +54,37 @@ UNIVERSE_DICT = {
     "LLY": "Eli Lilly", "MRK": "Merck", "ABBV": "AbbVie", "PFE": "Pfizer", "TMO": "Thermo Fisher"
 }
 
+TICKER_NAMES_FILE = "ticker_names.json"
+
+def load_ticker_names():
+    if os.path.exists(TICKER_NAMES_FILE):
+        try:
+            with open(TICKER_NAMES_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except:
+            pass
+    return {}
+
+def save_ticker_names(data):
+    with open(TICKER_NAMES_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=4)
+
+ticker_names_cache = load_ticker_names()
+
+def get_ticker_name(ticker):
+    if ticker in UNIVERSE_DICT:
+        return UNIVERSE_DICT[ticker]
+    if ticker in ticker_names_cache:
+        return ticker_names_cache[ticker]
+    try:
+        t_info = yf.Ticker(ticker).info
+        name = t_info.get("shortName") or t_info.get("longName") or "알 수 없음"
+        ticker_names_cache[ticker] = name
+        save_ticker_names(ticker_names_cache)
+        return name
+    except:
+        return "알 수 없음"
+
 def backtest_symbol(ticker, period="10y", initial_capital=10000000, stop_loss_type="ADX 25 돌파 시 (추세 강제청산)"):
     try:
         df = yf.download(ticker, period=period, interval="1d", progress=False)
@@ -162,7 +193,7 @@ def backtest_symbol(ticker, period="10y", initial_capital=10000000, stop_loss_ty
         win_rate = (win_trades / total_trades * 100) if total_trades > 0 else 0
         
         return {
-            "티커표시": f"{ticker} ({UNIVERSE_DICT.get(ticker, '')})",
+            "티커표시": f"{ticker} ({get_ticker_name(ticker)})",
             "수익률(%)": f"{round(total_return, 2):.2f}",
             "총수익금(원)": f"{int(capital - initial_capital):,}",
             "최종잔고(원)": f"{int(capital):,}",
@@ -241,7 +272,7 @@ def get_live_signal(ticker, stop_loss_type="ADX 25 돌파 시 (추세 강제청�
             
         return {
             "티커": ticker,
-            "종목명": UNIVERSE_DICT.get(ticker, ticker),
+            "종목명": get_ticker_name(ticker),
             "날짜": last_date,
             "현재가": f"{round(price, 2):,}",
             "20일선(MA)": f"{round(ma, 2):,}",
@@ -446,8 +477,9 @@ with tab_watch:
                             watchlists[mng_group].append(new_ticker)
                             save_watchlists(watchlists)
                             
-                            # 이름을 UNIVERSE_DICT에 추가 (세션 내 표시용)
-                            UNIVERSE_DICT[new_ticker] = suggestions[new_ticker]
+                            # 이름을 캐시에 추가하여 전역으로 유지
+                            ticker_names_cache[new_ticker] = suggestions[new_ticker]
+                            save_ticker_names(ticker_names_cache)
                             
                             st.success(f"'{new_ticker}' ({suggestions[new_ticker]}) 추가 완료!")
                             st.rerun()
@@ -474,7 +506,7 @@ with tab_watch:
             else:
                 for t in watchlists[mng_group]:
                     c_name, c_btn = st.columns([4, 1])
-                    c_name.write(f"- {t} ({UNIVERSE_DICT.get(t, '사용자 추가 종목')})")
+                    c_name.write(f"- {t} ({get_ticker_name(t)})")
                     if c_btn.button("삭제", key=f"del_{mng_group}_{t}"):
                         watchlists[mng_group].remove(t)
                         save_watchlists(watchlists)
