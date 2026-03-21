@@ -65,19 +65,40 @@ footer {visibility: hidden;}
     h2 { font-size: 1.25rem !important; }
     h3 { font-size: 1.1rem !important; }
 
-    /* --- 3. 탭(Tab) UI 모바일 최적화 (가로 스크롤 & 네이티브 앱 느낌) --- */
+    /* --- 3. 탭(Tab) UI 모바일 최적화 (iOS Segmented Control / 알약 스타일) --- */
     div[data-baseweb="tab-list"] {
-        gap: 0 !important;
+        gap: 0.3rem !important;
         overflow-x: auto !important;
         white-space: nowrap !important;
         -webkit-overflow-scrolling: touch;
-        border-bottom: 1px solid #e0e0e0;
-        padding-bottom: 0px !important;
-        margin-bottom: 10px !important;
+        background-color: rgba(240, 242, 246, 0.8) !important; /* 모바일형 연한 회색 배경 */
+        padding: 0.3rem !important;
+        border-radius: 12px !important;
+        border-bottom: none !important;
+        margin-bottom: 15px !important;
     }
-    div[data-baseweb="tab"] {
-        padding: 0.6rem 0.8rem !important;
+    
+    /* 기본 탭(Tab) 요소 리셋 및 둥글게 */
+    button[data-baseweb="tab"] {
+        padding: 0.6rem 1rem !important;
         font-size: 0.9rem !important;
+        font-weight: 600 !important;
+        border-radius: 8px !important;
+        background-color: transparent !important;
+        border: none !important;
+        color: #555555 !important;
+    }
+    
+    /* 활성화된(선택된) 탭 스타일 */
+    button[data-baseweb="tab"][aria-selected="true"] {
+        background-color: #ffffff !important;
+        color: #1f77b4 !important;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.08) !important;
+    }
+
+    /* 스트림릿 기본 하단 하이라이트(파란 밑줄) 숨김 */
+    div[data-baseweb="tab-highlight"] {
+        display: none !important;
     }
     
     /* --- 4. 데이터프레임 모바일 스크롤 확보 --- */
@@ -130,14 +151,22 @@ footer {visibility: hidden;}
     }
 }
 
-/* 7. 다크모드 대응 Metric 카드 */
+/* 7. 다크모드 대응 Metric 카드 & Tab UI */
 @media (prefers-color-scheme: dark) and (max-width: 768px) {
     div[data-testid="metric-container"] {
-        background-color: #262730;
-        border: 1px solid #33343a;
+        background-color: #2b2b30;
+        border: 1px solid #3d3d42;
     }
     div[data-baseweb="tab-list"] {
-        border-bottom: 1px solid #33343a;
+        background-color: #2b2b30 !important;
+    }
+    button[data-baseweb="tab"] {
+        color: #aaaaaa !important;
+    }
+    button[data-baseweb="tab"][aria-selected="true"] {
+        background-color: #3d3d42 !important;
+        color: #ffffff !important;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.3) !important;
     }
 }
 </style>
