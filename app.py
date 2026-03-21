@@ -543,6 +543,8 @@ with tab_scan:
         df_summary["승률(%)"] = df_summary["승률(%)"].astype(float)
         
         df_summary = df_summary.sort_values(by=["수익률(%)", "승률(%)"], ascending=[False, False]).reset_index(drop=True)
+        # 인덱스 1부터 시작
+        df_summary.index += 1
         # 인덱스를 "순위"라는 컬럼으로 명시적으로 변환하여 보이게 만들기
         df_summary.insert(0, "순위", df_summary.index)
         
