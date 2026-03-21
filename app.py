@@ -85,6 +85,7 @@ def get_ticker_name(ticker):
     except:
         return "알 수 없음"
 
+@st.cache_data(ttl=3600, show_spinner=False)
 def backtest_symbol(ticker, period="10y", initial_capital=10000000, stop_loss_type="ADX 25 돌파 시 (추세 강제청산)"):
     try:
         df = yf.download(ticker, period=period, interval="1d", progress=False)
@@ -223,6 +224,7 @@ def save_watchlists(data):
 
 watchlists = load_watchlists()
 
+@st.cache_data(ttl=600, show_spinner=False)
 def get_live_signal(ticker, stop_loss_type="ADX 25 돌파 시 (추세 강제청산)"):
     try:
         # 최근 6개월 데이터만 가져와서 지표 계산
