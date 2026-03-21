@@ -221,6 +221,8 @@ def backtest_hybrid_symbol(ticker, period="3y", initial_capital=10000000, stop_l
         df = df[['High', 'Low', 'Close']].copy()
         
         df['MA'] = df['Close'].rolling(window=20).mean()
+        df['MA5'] = df['Close'].rolling(window=5).mean()
+        df['MA60'] = df['Close'].rolling(window=60).mean()
         df['STD'] = df['Close'].rolling(window=20).std()
         df['Z-Score'] = (df['Close'] - df['MA']) / df['STD']
         
@@ -251,6 +253,8 @@ def backtest_hybrid_symbol(ticker, period="3y", initial_capital=10000000, stop_l
         adxs = df['ADX'].values
         hursts = df['Hurst'].values
         mas = df['MA'].values
+        ma5s = df['MA5'].values
+        ma60s = df['MA60'].values
         dates = df.index
         
         for i in range(1, len(df)):
@@ -259,8 +263,12 @@ def backtest_hybrid_symbol(ticker, period="3y", initial_capital=10000000, stop_l
             adx = adxs[i]
             h = hursts[i]
             ma = mas[i]
+            ma5 = ma5s[i]
+            ma60 = ma60s[i]
             prev_price = prices[i-1]
             prev_ma = mas[i-1]
+            prev_ma5 = ma5s[i-1]
+            prev_ma60 = ma60s[i-1]
             
             # extract string if datetiime
             current_date = dates[i].strftime('%Y-%m-%d') if pd.notnull(dates[i]) else str(dates[i])
@@ -272,7 +280,7 @@ def backtest_hybrid_symbol(ticker, period="3y", initial_capital=10000000, stop_l
                     buy_price = price
                     buy_date = current_date
                     capital -= position * price
-                elif h > 0.55 and price > ma and prev_price <= prev_ma:
+                elif h > 0.55 and ma5 > ma and ma > ma60 and not (prev_ma5 > prev_ma and prev_ma > prev_ma60):
                     mode = "강력추세(매수)"
                     position = capital // price
                     buy_price = price
@@ -402,7 +410,9 @@ def get_hybrid_signal(ticker):
             
         df = df[['High', 'Low', 'Close']].copy()
         
+        df['MA5'] = df['Close'].rolling(window=5).mean()
         df['MA20'] = df['Close'].rolling(window=20).mean()
+        df['MA60'] = df['Close'].rolling(window=60).mean()
         df['STD20'] = df['Close'].rolling(window=20).std()
         df['Z-Score'] = (df['Close'] - df['MA20']) / df['STD20']
         df.dropna(inplace=True)
@@ -413,9 +423,17 @@ def get_hybrid_signal(ticker):
         hurst_val = calculate_hurst(df['Close'].values[-100:])
         
         latest = df.iloc[-1]
+        prev = df.iloc[-2]
         z_val = round(latest['Z-Score'], 2)
         price = round(latest['Close'], 2)
+        ma5 = round(latest['MA5'], 2)
         ma = round(latest['MA20'], 2)
+        ma60 = round(latest['MA60'], 2)
+        
+        prev_ma5 = round(prev['MA5'], 2)
+        prev_ma = round(prev['MA20'], 2)
+        prev_ma60 = round(prev['MA60'], 2)
+        
         h_val = round(hurst_val, 2)
         
         last_date = df.index[-1].strftime('%Y-%m-%d') if pd.notnull(df.index[-1]) else str(df.index[-1])
@@ -431,9 +449,9 @@ def get_hybrid_signal(ticker):
                 signal_type = "💰 평균회귀 수확(매도)"
                 msg = "평균회귀 고점 도달"
         elif h_val > 0.55:
-            if price > ma and z_val > 0:
+            if ma5 > ma and ma > ma60 and not (prev_ma5 > prev_ma and prev_ma > prev_ma60):
                 signal_type = "🌊 강력 추세 탑승(매수)"
-                msg = "강력한 상승 흐름 감지!"
+                msg = "이동평균선 정배열 진입 감지!"
         
         return {
             "티커": ticker,
