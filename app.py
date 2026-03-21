@@ -42,51 +42,102 @@ st.set_page_config(page_title="Z-Hunter Web Scanner", page_icon="🎯", layout="
 # --- 모바일 최적화 CSS ---
 st.markdown("""
 <style>
-/* 기본 패딩 축소 */
+/* --- 1. 기본 Streamlit 여백 및 불필요한 UI 숨김 --- */
+#MainMenu {visibility: hidden;}
+header {visibility: hidden;}
+footer {visibility: hidden;}
+
 .block-container {
-    padding-top: 2rem !important;
+    padding-top: 1.5rem !important;
     padding-bottom: 2rem !important;
+    max-width: 100vw !important;
 }
 
+/* --- 2. 모바일 전용 반응형 (max-width: 768px) --- */
 @media (max-width: 768px) {
-    /* 모바일에서 좌우 주요 패딩 확 줄이기 */
+    /* 기본 패딩 최소화 */
     .block-container {
-        padding-top: 1rem !important;
-        padding-bottom: 1rem !important;
-        padding-left: 0.5rem !important;
-        padding-right: 0.5rem !important;
+        padding: 1rem 0.5rem !important;
     }
     
-    /* 탭(Tab) 자동 스크롤 및 간격 좁히기 (모바일 화면 밖으로 넘치는 탭 방지) */
+    /* 폰트 스케일링 */
+    h1 { font-size: 1.5rem !important; }
+    h2 { font-size: 1.25rem !important; }
+    h3 { font-size: 1.1rem !important; }
+
+    /* --- 3. 탭(Tab) UI 모바일 최적화 (가로 스크롤 & 네이티브 앱 느낌) --- */
     div[data-baseweb="tab-list"] {
         gap: 0 !important;
         overflow-x: auto !important;
         white-space: nowrap !important;
         -webkit-overflow-scrolling: touch;
+        border-bottom: 1px solid #e0e0e0;
+        padding-bottom: 0px !important;
+        margin-bottom: 10px !important;
     }
     div[data-baseweb="tab"] {
-        padding-left: 0.5rem !important;
-        padding-right: 0.5rem !important;
-        font-size: 0.85rem !important;
+        padding: 0.6rem 0.8rem !important;
+        font-size: 0.9rem !important;
     }
     
-    /* 화면 너비를 넘는 DataFrame 표시 강제 조정 */
+    /* --- 4. 데이터프레임 모바일 스크롤 확보 --- */
     div[data-testid="stDataFrame"] {
-        font-size: 0.8rem !important;
+        font-size: 0.75rem !important;
+        width: 100% !important;
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch;
     }
     
-    /* 체크박스 및 버튼 꽉 차게 */
-    .stButton>button {
+    /* --- 5. 터치 타겟(Touch Target) 확대 (버튼, 인풋 최소 44px 이상) --- */
+    .stButton>button, 
+    div[data-baseweb="select"] > div, 
+    input[type="number"],
+    input[type="text"] {
+        min-height: 48px !important;
+        font-size: 16px !important; /* iOS 자동 줌(Zoom) 방지 */
         width: 100% !important;
+        border-radius: 8px !important;
     }
     
     label[data-baseweb="checkbox"] {
-        font-size: 0.85rem !important;
+        font-size: 0.9rem !important;
+        padding-top: 0.5rem;
+        padding-bottom: 0.5rem;
     }
     
-    /* Plotly 차트가 모바일에서 잘리지 않도록 강제 크기 조절 */
+    /* --- 6. Metric(지표) 카드형 디자인 구축 --- */
+    div[data-testid="metric-container"] {
+        background-color: #f7f9fc;
+        border: 1px solid #e6e9ef;
+        border-radius: 10px;
+        padding: 0.5rem !important;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+    }
+    div[data-testid="metric-container"] label {
+        font-size: 0.75rem !important;
+    }
+    div[data-testid="metric-container"] div {
+        font-size: 1.1rem !important;
+    }
+
+    /* Plotly 차트 너비 넘침 방지 */
     .js-plotly-plot, .plotly, .js-plotly-plot .plot-container {
         max-width: 100% !important;
+    }
+}
+
+/* 7. 다크모드 대응 Metric 카드 */
+@media (prefers-color-scheme: dark) and (max-width: 768px) {
+    div[data-testid="metric-container"] {
+        background-color: #262730;
+        border: 1px solid #33343a;
+    }
+    div[data-baseweb="tab-list"] {
+        border-bottom: 1px solid #33343a;
     }
 }
 </style>
