@@ -133,8 +133,8 @@ def backtest_hybrid_symbol(ticker, period="3y", initial_capital=10000000, stop_l
         import pandas_ta as ta
         import types
         
-        # DualRegimeRiskManager 초기화 (날짜 대신 앱의 period 활용)
-        engine = DualRegimeRiskManager(ticker=ticker, period=period, initial_capital=initial_capital)
+        # DualRegimeRiskManager 초기화 (날짜 대신 앱의 period, 손절 옵션 활용)
+        engine = DualRegimeRiskManager(ticker=ticker, period=period, initial_capital=initial_capital, stop_loss_type=stop_loss_type)
         engine.tx_cost = 0.00125 # 0.125% per trade
         
         df, metrics = engine.run_backtest()

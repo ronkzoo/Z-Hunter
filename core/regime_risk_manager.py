@@ -11,10 +11,11 @@ class DualRegimeRiskManager:
     Hurst Exponent를 이용한 Regime Switching 및 국면별 차등 Stop-Loss 메커니즘 구현
     """
     
-    def __init__(self, ticker: str, period: str = "3y", initial_capital: float = 10000000):
+    def __init__(self, ticker: str, period: str = "3y", initial_capital: float = 10000000, stop_loss_type: str = "듀얼 국면 리스크 모델"):
         self.ticker = ticker
         self.period = period
         self.initial_capital = initial_capital
+        self.stop_loss_type = stop_loss_type
         
         # 거래 비용 (진입/청산 왕복 0.25% -> 편도 0.125%)
         self.tx_cost = 0.00125  
@@ -77,29 +78,48 @@ class DualRegimeRiskManager:
             if position > 0:
                 exit_signal = False
                 reason = ""
+                profit_pct = ((close - entry_price) / entry_price) * 100
 
+                # 1. 공통 목표/기본 청산 (익절 등 핵심 로직)
                 if mode == 'MR':
-                    # 1) MR: 통계적 붕괴 손절 (Z <= -3.5)
-                    if z_score <= -3.5:
-                        exit_signal, reason = True, "[MR 손절] 통계적 붕괴 (Z<=-3.5)"
-                    # 2) MR: 추세 전환 손절 (ADX > 30)
-                    elif adx > 30:
-                        exit_signal, reason = True, "[MR 손절] 박스권 이탈형 추세발생 (ADX>30)"
                     # 3) MR: 정상 익절 (평균 회귀 완료, Z >= 0)
-                    elif z_score >= 0:
+                    if z_score >= 0:
                         exit_signal, reason = True, "[MR 익절] 평균 회귀 달성 (Z>=0)"
-
                 elif mode == 'TF':
                     # 변동성 트레일링 스톱 계산 (2 * ATR)
                     current_ts = close - (2 * atr)
                     trailing_stop_price = max(trailing_stop_price, current_ts)
-                    
-                    # 1) TF: 기준선 이탈 손절 (종가 < 20일선)
-                    if close < ma20:
-                        exit_signal, reason = True, "[TF 청산] 기준선(MA20) 하향 돌파"
                     # 2) TF: 트레일링 스톱 이탈 손절
-                    elif close < trailing_stop_price:
+                    if close < trailing_stop_price:
                         exit_signal, reason = True, "[TF 청산] 트레일링 스톱 이탈"
+
+                # 2. 선택된 손절/강제청산 기준 적용
+                if not exit_signal:
+                    if self.stop_loss_type == "듀얼 국면 리스크 모델":
+                        if mode == 'MR':
+                            if z_score <= -3.5:
+                                exit_signal, reason = True, "[MR 손절] 통계적 붕괴 (Z<=-3.5)"
+                            elif adx > 30:
+                                exit_signal, reason = True, "[MR 손절] 박스권 이탈형 추세발생 (ADX>30)"
+                        elif mode == 'TF':
+                            if close < ma20:
+                                exit_signal, reason = True, "[TF 청산] 기준선(MA20) 하향 돌파"
+                    else:
+                        # UI에서 강제 지정한 커스텀 손절 로직
+                        if self.stop_loss_type == "ADX 25 돌파 시 (추세 강제청산)" and adx >= 25:
+                            exit_signal, reason = True, "📉 추세청산 (ADX 25+)"
+                        elif self.stop_loss_type == "-3% 수익률 손절" and profit_pct <= -3:
+                            exit_signal, reason = True, "📉 손절 (-3%)"
+                        elif self.stop_loss_type == "-5% 수익률 손절" and profit_pct <= -5:
+                            exit_signal, reason = True, "📉 손절 (-5%)"
+                        elif self.stop_loss_type == "-10% 수익률 손절" and profit_pct <= -10:
+                            exit_signal, reason = True, "📉 손절 (-10%)"
+                        elif self.stop_loss_type == "20일선 하향 돌파 시" and close < ma20:
+                            exit_signal, reason = True, "📉 추세이탈 (20일선 미만)"
+                        
+                        # 추세추종(TF)의 경우 커스텀 손절을 지정했어도 추세가 완전히 꺾인 20일선 이탈은 방어적으로 청산
+                        if not exit_signal and mode == 'TF' and close < ma20:
+                            exit_signal, reason = True, "[TF 청산] 기준선(MA20) 하향 돌파"
 
                 if exit_signal:
                     gross_return = (close / entry_price) - 1

@@ -525,14 +525,17 @@ with tab_scan:
         with col_s2:
             period = st.selectbox("테스트할 기간 선택", ["1mo", "3mo", "6mo", "1y", "3y", "5y", "10y"], index=4, key="scan_period") # 기본 3y
             min_trades = st.number_input("최소 거래 횟수 기준", min_value=1, value=1, key="scan_trades")
+            
+            if scan_strategy == "하이브리드 (Regime Switching)":
+                stop_ops = ["듀얼 국면 리스크 모델", "ADX 25 돌파 시 (추세 강제청산)", "-3% 수익률 손절", "-5% 수익률 손절", "-10% 수익률 손절", "20일선 하향 돌파 시", "손절/강제청산 없음"]
+            else:
+                stop_ops = ["ADX 25 돌파 시 (추세 강제청산)", "-3% 수익률 손절", "-5% 수익률 손절", "-10% 수익률 손절", "20일선 하향 돌파 시", "손절/강제청산 없음"]
+                
             stop_loss_type = st.selectbox(
                 "손절 기준 (청산 전략)", 
-                ["ADX 25 돌파 시 (추세 강제청산)", "-3% 수익률 손절", "-5% 수익률 손절", "-10% 수익률 손절", "20일선 하향 돌파 시", "손절/강제청산 없음"],
+                stop_ops,
                 key="scan_stop"
             )
-        
-        run_scan_btn = st.button("🚀 백테스트 스캔 시작", type="primary", use_container_width=True)
-
     if run_scan_btn:
         st.markdown(f"### 🔍 {period} 데이터 스캔 진행 중... (투자금: {initial_capital:,}원)")
         st.markdown(f"**적용된 청산 전략:** `{stop_loss_type}`")
@@ -662,6 +665,14 @@ with tab_scan:
                     df_logs = pd.DataFrame(trade_logs)
                     df_logs.index += 1
                     
+                    # 1. 고유 키로 dataframe 선택 상태 확인 (렌더링 전 사전 확인)
+                    log_table_key = f"logs_{raw_ticker}"
+                    selected_log_idx = None
+                    if log_table_key in st.session_state:
+                        rows = st.session_state[log_table_key].get("selection", {}).get("rows", [])
+                        if rows:
+                            selected_log_idx = rows[0]
+                    
                     # Plotly 차트 그리기
                     if chart_df is not None and not chart_df.empty:
                         fig = go.Figure()
@@ -671,43 +682,78 @@ with tab_scan:
                             mode='lines', name='Price', line=dict(color='gray', width=1)
                         ))
                         
-                        # 매수/매도 포인트 추출
+                        # 2. 매수/매도 포인트 추출 (결측치 '-' 고려)
                         buy_dates, buy_prices = [], []
                         sell_dates, sell_prices = [], []
                         for log in trade_logs:
-                            buy_dates.append(log['매수일자'])
-                            buy_prices.append(float(str(log['매수가']).replace(',', '')))
-                            sell_dates.append(log['매도일자'])
-                            sell_prices.append(float(str(log['매도가']).replace(',', '')))
+                            if log.get('매수일자') and log['매수일자'] != '-':
+                                buy_dates.append(log['매수일자'])
+                                buy_prices.append(float(str(log['매수가']).replace(',', '')))
+                            if log.get('매도일자') and log['매도일자'] != '-':
+                                sell_dates.append(log['매도일자'])
+                                sell_prices.append(float(str(log['매도가']).replace(',', '')))
                             
-                        # 매수(Buy) 점 찍기 (파란색 세모 위로)
+                        # 일반 매수(Buy) 점 찍기
                         if buy_dates:
                             fig.add_trace(go.Scatter(
                                 x=buy_dates, y=buy_prices, mode='markers', name='Buy',
-                                marker=dict(symbol='triangle-up', size=12, color='blue', line=dict(width=1, color='DarkSlateGrey'))
+                                marker=dict(symbol='triangle-up', size=10, color='blue', line=dict(width=1, color='DarkSlateGrey'))
                             ))
                             
-                        # 매도(Sell) 점 찍기 (빨간색 세모 아래로)
+                        # 일반 매도(Sell) 점 찍기
                         if sell_dates:
                             fig.add_trace(go.Scatter(
                                 x=sell_dates, y=sell_prices, mode='markers', name='Sell',
-                                marker=dict(symbol='triangle-down', size=12, color='red', line=dict(width=1, color='DarkSlateGrey'))
+                                marker=dict(symbol='triangle-down', size=10, color='red', line=dict(width=1, color='DarkSlateGrey'))
                             ))
                             
+                        # 🔥 선택된 내역 강조 표시
+                        if selected_log_idx is not None:
+                            sel_log = df_logs.iloc[selected_log_idx]
+                            b_date = sel_log.get('매수일자', '-')
+                            s_date = sel_log.get('매도일자', '-')
+                            
+                            b_valid = str(b_date) != '-' and pd.notnull(b_date)
+                            s_valid = str(s_date) != '-' and pd.notnull(s_date)
+                            
+                            if b_valid:
+                                b_price = float(str(sel_log.get('매수가', 0)).replace(',', ''))
+                                fig.add_trace(go.Scatter(
+                                    x=[b_date], y=[b_price], mode='markers', name='Selected Buy',
+                                    marker=dict(size=20, color='gold', symbol='star', line=dict(width=2, color='black'))
+                                ))
+                                
+                            if s_valid:
+                                s_price = float(str(sel_log.get('매도가', 0)).replace(',', ''))
+                                fig.add_trace(go.Scatter(
+                                    x=[s_date], y=[s_price], mode='markers', name='Selected Sell',
+                                    marker=dict(size=20, color='darkorange', symbol='star', line=dict(width=2, color='black'))
+                                ))
+                                
+                            if b_valid and s_valid:
+                                fig.add_vrect(
+                                    x0=b_date, x1=s_date,
+                                    fillcolor="yellow", opacity=0.3,
+                                    layer="below", line_width=0,
+                                )
+
                         fig.update_layout(
                             title=f"{selected_ticker_name} Backtest Trade Points",
                             xaxis_title="Date",
                             yaxis_title="Price",
-                            xaxis=dict(
-                                tickformat="%Y-%m-%d",
-                                hoverformat="%Y-%m-%d"
-                            ),
+                            xaxis=dict(tickformat="%Y-%m-%d", hoverformat="%Y-%m-%d"),
                             height=400,
                             margin=dict(l=20, r=20, t=40, b=20)
                         )
                         st.plotly_chart(fig, use_container_width=True)
                     
-                    st.dataframe(df_logs, use_container_width=True)
+                    st.dataframe(
+                        df_logs, 
+                        use_container_width=True,
+                        selection_mode="single-row",
+                        on_select="rerun",
+                        key=log_table_key
+                    )
                 else:
                     st.write("상세 거래 내역이 없습니다.")
         else:
