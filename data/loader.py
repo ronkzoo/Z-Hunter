@@ -126,6 +126,141 @@ def backtest_symbol(ticker, period="10y", initial_capital=10000000, stop_loss_ty
 
 
 
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def backtest_trend_symbol(ticker, period="10y", initial_capital=10000000, stop_loss_type="20일선 하향 돌파 시"):
+    try:
+        df = yf.download(ticker, period=period, interval="1d", progress=False)
+        if df.empty:
+            return None
+        
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+            
+        df = df[['High', 'Low', 'Close']].copy()
+        
+        # 지표 산출
+        df = add_moving_averages(df, windows=[5, 20, 60])
+        df = add_adx_feature(df)
+        df.dropna(inplace=True)
+
+        capital = initial_capital
+        position = 0
+        buy_price = 0
+        buy_date = None
+        win_trades = 0
+        total_trades = 0
+        trade_logs = []
+        
+        df['prev_MA5'] = df['MA5'].shift(1)
+        df['prev_MA20'] = df['MA20'].shift(1)
+        df['prev_MA60'] = df['MA60'].shift(1)
+        df.dropna(inplace=True)
+
+        for index, row in df.iterrows():
+            current_date = index.strftime('%Y-%m-%d') if pd.notnull(index) else str(index)
+            
+            ma5 = row['MA5']
+            ma20 = row['MA20']
+            ma60 = row['MA60']
+            adx = row['ADX']
+            price = row['Close']
+            
+            prev_ma5 = row['prev_MA5']
+            prev_ma20 = row['prev_MA20']
+            prev_ma60 = row['prev_MA60']
+
+            if position == 0:
+                # 진입: 정배열 (5 > 20 > 60) 진입 돌파 시점 & ADX >= 25 일때
+                if ma5 > ma20 and ma20 > ma60 and not (prev_ma5 > prev_ma20 and prev_ma20 > prev_ma60) and adx >= 25:
+                    position = capital // price
+                    buy_price = price
+                    buy_date = current_date
+                    capital -= position * price
+            
+            elif position > 0:
+                sell_condition = False
+                sell_type = ""
+                profit_pct = ((price - buy_price) / buy_price) * 100
+                
+                # 매도 조건 1: 단기 추세 꺾임 (5일선이 20일선 데드크로스)
+                if ma5 < ma20:
+                    sell_condition = True
+                    sell_type = "🎯 추세이탈 (5MA < 20MA)"
+                else:
+                    # 매도 조건 2: 선택된 손절/강제청산 기준 적용
+                    if stop_loss_type == "ADX 25 하향 돌파 시 (추세 약화)" and adx < 25:
+                        sell_condition = True
+                        sell_type = "📉 추세약화 (ADX < 25)"
+                    elif stop_loss_type == "ADX 25 돌파 시 (추세 강제청산)" and adx < 25: # 기존 UI 호환용 
+                        sell_condition = True
+                        sell_type = "📉 추세약화 (ADX < 25)"
+                    elif stop_loss_type == "-3% 수익률 손절" and profit_pct <= -3:
+                        sell_condition = True
+                        sell_type = "📉 손절 (-3%)"
+                    elif stop_loss_type == "-5% 수익률 손절" and profit_pct <= -5:
+                        sell_condition = True
+                        sell_type = "📉 손절 (-5%)"
+                    elif stop_loss_type == "-10% 수익률 손절" and profit_pct <= -10:
+                        sell_condition = True
+                        sell_type = "📉 손절 (-10%)"
+                    elif stop_loss_type == "20일선 하향 돌파 시" and price < ma20:
+                        sell_condition = True
+                        sell_type = "📉 추세이탈 (20일선 미만)"
+
+                if sell_condition:
+                    capital += position * price
+                    if price > buy_price:
+                        win_trades += 1
+                    total_trades += 1
+                    
+                    trade_logs.append({
+                        "매수일자": buy_date,
+                        "매도일자": current_date,
+                        "매도사유": sell_type,
+                        "매수가": f"{round(buy_price, 2):,}",
+                        "매도가": f"{round(price, 2):,}",
+                        "수익률(%)": f"{round(profit_pct, 2):.2f}",
+                        "거래금액": f"{int(position * price):,}"
+                    })
+                    position = 0
+
+        if position > 0:
+            last_price = df.iloc[-1]['Close']
+            last_date = df.index[-1].strftime('%Y-%m-%d')
+            capital += position * last_price
+            profit_pct = ((last_price - buy_price) / buy_price) * 100
+            if last_price > buy_price:
+                win_trades += 1
+            total_trades += 1
+            trade_logs.append({
+                "매수일자": buy_date,
+                "매도일자": last_date,
+                "매도사유": "보유중 (마지막 종가 평가)",
+                "매수가": f"{round(buy_price, 2):,}",
+                "매도가": f"{round(last_price, 2):,}",
+                "수익률(%)": f"{round(profit_pct, 2):.2f}",
+                "거래금액": f"{int(position * last_price):,}"
+            })
+            position = 0
+
+        total_return = ((capital - initial_capital) / initial_capital) * 100
+        win_rate = (win_trades / total_trades * 100) if total_trades > 0 else 0
+        
+        return {
+            "티커표시": f"{ticker} ({get_ticker_name(ticker)})",
+            "수익률(%)": f"{round(total_return, 2):.2f}",
+            "총수익금(원)": f"{int(capital - initial_capital):,}",
+            "최종잔고(원)": f"{int(capital):,}",
+            "승률(%)": f"{round(win_rate, 2):.2f}",
+            "거래횟수": total_trades,
+            "상세내역": trade_logs,
+            "chart_data": df[['Close']].reset_index(),
+        }
+    except Exception:
+        return None
+
+
 def backtest_hybrid_symbol(ticker, period="3y", initial_capital=10000000, stop_loss_type="듀얼 국면 리스크 모델"):
     try:
         from core.regime_risk_manager import DualRegimeRiskManager

@@ -13,7 +13,7 @@ from utils.helpers import send_telegram_message, get_ticker_name, load_watchlist
 
 watchlists = load_watchlists()
 ticker_names_cache = load_ticker_names()
-from data.loader import backtest_symbol, backtest_hybrid_symbol, get_hybrid_signal, get_live_signal
+from data.loader import backtest_symbol, backtest_hybrid_symbol, backtest_trend_symbol, get_hybrid_signal, get_live_signal
 from dotenv import load_dotenv
 
 load_dotenv(override=True)
@@ -526,7 +526,7 @@ with tab_scan:
     with st.expander("⚙️ 스캐너 설정", expanded=True):
         col_s1, col_s2 = st.columns(2)
         with col_s1:
-            scan_strategy = st.selectbox("백테스트 전략", ["기본 평균회귀 (Z-Score)", "하이브리드 (Regime Switching)"], key="scan_strat")
+            scan_strategy = st.selectbox("백테스트 전략", ["기본 평균회귀 (Z-Score)", "강력 추세 (Trend Following)", "하이브리드 (Regime Switching)"], key="scan_strat")
             scan_target = st.selectbox("스캔 대상 선택", ["기본 유니버스 (50종목)"] + list(watchlists.keys()), key="scan_target")
             initial_capital = st.number_input("초기 투자금 (원)", min_value=100000, value=10000000, step=1000000, format="%d", key="scan_cap")
         with col_s2:
@@ -535,6 +535,8 @@ with tab_scan:
             
             if scan_strategy == "하이브리드 (Regime Switching)":
                 stop_ops = ["듀얼 국면 리스크 모델", "ADX 25 돌파 시 (추세 강제청산)", "-3% 수익률 손절", "-5% 수익률 손절", "-10% 수익률 손절", "20일선 하향 돌파 시", "손절/강제청산 없음"]
+            elif scan_strategy == "강력 추세 (Trend Following)":
+                stop_ops = ["ADX 25 하향 돌파 시 (추세 약화)", "-3% 수익률 손절", "-5% 수익률 손절", "-10% 수익률 손절", "20일선 하향 돌파 시", "손절/강제청산 없음"]
             else:
                 stop_ops = ["ADX 25 돌파 시 (추세 강제청산)", "-3% 수익률 손절", "-5% 수익률 손절", "-10% 수익률 손절", "20일선 하향 돌파 시", "손절/강제청산 없음"]
                 
@@ -570,6 +572,8 @@ with tab_scan:
             
             if scan_strategy == "하이브리드 (Regime Switching)":
                 res = backtest_hybrid_symbol(ticker, period=period, initial_capital=initial_capital, stop_loss_type=stop_loss_type)
+            elif scan_strategy == "강력 추세 (Trend Following)":
+                res = backtest_trend_symbol(ticker, period=period, initial_capital=initial_capital, stop_loss_type=stop_loss_type)
             else:
                 res = backtest_symbol(ticker, period=period, initial_capital=initial_capital, stop_loss_type=stop_loss_type)
                 
