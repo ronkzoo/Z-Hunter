@@ -168,8 +168,9 @@ class DualRegimeRiskManager:
         cagr = (equity_curve[-1] ** (365.0 / days)) - 1 if days > 0 else 0
         
         # MDD (자산 고점 대비 최대 낙폭)
-        running_max = np.maximum.accumulate(equity_curve)
-        drawdown = (equity_curve - running_max) / running_max
+        equity_arr = np.array(equity_curve)
+        running_max = np.maximum.accumulate(equity_arr)
+        drawdown = (equity_arr - running_max) / running_max
         mdd = abs(np.min(drawdown))
         
         # Sharpe Ratio (무위험 수익률 0% 가정)
@@ -198,7 +199,7 @@ if __name__ == "__main__":
     print("🚀 Initializing Dual-Regime Risk Management Engine...")
     
     # QQQ (나스닥 100 ETF) 기준 백테스트 (변동성이 좋아 하이브리드 검증에 우수)
-    engine = DualRegimeRiskManager(ticker="QQQ", start_date="2018-01-01", end_date="2024-01-01")
+    engine = DualRegimeRiskManager(ticker="QQQ", period="6y")
     
     df, metrics = engine.run_backtest()
     
