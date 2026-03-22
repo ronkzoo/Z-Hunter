@@ -126,8 +126,8 @@ class DualRegimeRiskManager:
                         # 돌파 즉시 매도로 간주하여 터치 가격 편입
                         sell_price = volatility_band
 
-                    # 2단: Trend Exhaustion Exit (Hurst Decay)
-                    if not exit_signal and not is_partial:
+                    # 2단: Trend Exhaustion Exit (Hurst Decay) - 추세추종(TF) 모드 전용
+                    if not exit_signal and not is_partial and mode == 'TF':
                         if hurst < 0.55 and ((close - entry_price) > 0 or close > ma20):
                             exit_signal = True
                             reason = "📉 추세 동력 상실 (Hurst < 0.55)"
