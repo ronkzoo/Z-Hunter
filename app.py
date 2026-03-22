@@ -536,6 +536,9 @@ with tab_scan:
                 stop_ops,
                 key="scan_stop"
             )
+        
+        run_scan_btn = st.button("🚀 백테스트 스캔 시작", type="primary", use_container_width=True)
+
     if run_scan_btn:
         st.markdown(f"### 🔍 {period} 데이터 스캔 진행 중... (투자금: {initial_capital:,}원)")
         st.markdown(f"**적용된 청산 전략:** `{stop_loss_type}`")
