@@ -605,24 +605,33 @@ with tab_scan:
         
         st.subheader("🏆 백테스트 요약 결과 Top Rank (클릭하여 상세 내역 확인)")
         
-        # 요약 평균 지표를 화면에 표시
+        # 요약 평균 지표를 화면에 표시 (모바일 환경에 맞춰 2열로 배치)
         avg_return = df_summary["수익률(%)"].mean()
         avg_win_rate = df_summary["승률(%)"].mean()
         avg_trades = df_summary["거래횟수"].mean()
         
+        if "총수익금(원)" in df_summary.columns and "최종잔고(원)" in df_summary.columns:
+            avg_profit = df_summary["총수익금(원)"].astype(str).str.replace(",", "").astype(float).mean()
+            avg_balance = df_summary["최종잔고(원)"].astype(str).str.replace(",", "").astype(float).mean()
+        else:
+            avg_profit, avg_balance = 0, 0
+            
+        c1, c2 = st.columns(2)
+        c1.metric("📌 평균 수익률", f"{avg_return:.2f}%")
+        c2.metric("🎯 평균 승률", f"{avg_win_rate:.2f}%")
+        
+        c3, c4 = st.columns(2)
+        c3.metric("💰 평균 수익금", f"{int(avg_profit):,}원")
+        c4.metric("🏦 평균 최종잔고", f"{int(avg_balance):,}원")
+        
+        c5, c6 = st.columns(2)
         if "MDD(%)" in df_summary.columns:
             df_summary["MDD(%)"] = df_summary["MDD(%)"].astype(float)
             avg_mdd = df_summary["MDD(%)"].mean()
-            col1, col2, col3, col4 = st.columns(4)
-            col1.metric("📌 평균 수익률", f"{avg_return:.2f}%")
-            col2.metric("🎯 평균 승률", f"{avg_win_rate:.2f}%")
-            col3.metric("📉 평균 MDD", f"{avg_mdd:.2f}%")
-            col4.metric("🔄 평균 거래횟수", f"{avg_trades:.1f}회")
+            c5.metric("📉 평균 MDD", f"{avg_mdd:.2f}%")
+            c6.metric("🔄 평균 거래횟수", f"{avg_trades:.1f}회")
         else:
-            col1, col2, col3 = st.columns(3)
-            col1.metric("📌 평균 수익률", f"{avg_return:.2f}%")
-            col2.metric("🎯 평균 승률", f"{avg_win_rate:.2f}%")
-            col3.metric("🔄 평균 거래횟수", f"{avg_trades:.1f}회")
+            c5.metric("🔄 평균 거래횟수", f"{avg_trades:.1f}회")
         
         st.markdown("")
 
