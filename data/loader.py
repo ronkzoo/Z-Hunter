@@ -303,6 +303,8 @@ def backtest_hybrid_symbol(ticker, period="3y", initial_capital=10000000, stop_l
             "총수익금(원)": f"{int(initial_capital * (metrics['Total Return(%)']/100)):,}",
             "최종잔고(원)": f"{int(initial_capital * (1 + metrics['Total Return(%)']/100)):,}",
             "승률(%)": f"{metrics['Win Rate(%)']:.2f}",
+            "평균익절수익률(%)": f"{metrics.get('Average TP Return(%)', 0):.2f}",
+            "수익보존율(%)": f"{metrics.get('Profit Retention(%)', 0):.2f}",
             "거래횟수": metrics['Total Trades'],
             "상세내역": trade_logs,
             "chart_data": df[['Close']].reset_index(),

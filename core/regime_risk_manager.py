@@ -29,7 +29,7 @@ class DualRegimeRiskManager:
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
             
-        df = df[['Open', 'High', 'Low', 'Close']].copy()
+        df = df[['Open', 'High', 'Low', 'Close', 'Volume']].copy()
 
         # 1. 기술적 지표 계산
         df = add_zscore_features(df, window=20, ma_name='MA20', std_name='STD20', z_name='Z-Score')
@@ -40,6 +40,9 @@ class DualRegimeRiskManager:
         # 리스크 지표 (ADX, ATR)
         df = add_adx_feature(df, length=14, adx_name='ADX')
         df['ATR'] = df.ta.atr(length=14)
+        
+        # Volume MA20 추가 (Volume Climax용)
+        df['Volume_MA20'] = df['Volume'].rolling(window=20).mean()
         
         # 2. Regime 판별 지표 (Hurst Exponent - 100일 윈도우)
         df['Hurst'] = df['Close'].rolling(100).apply(calculate_hurst, raw=True)
@@ -61,10 +64,21 @@ class DualRegimeRiskManager:
         mode = None               # 'MR' (Mean Reversion) or 'TF' (Trend Following)
         trailing_stop_price = 0.0
         
+        # Advanced Profit-Taking State
+        partial_taken = False
+        max_runup_pct = 0.0
+        exit_next_open_flag = False
+        exit_next_open_reason = ""
+        
         equity_curve = []
         
         for date, row in df.iterrows():
+            open_price = row['Open']
+            high = row['High']
+            low = row['Low']
             close = row['Close']
+            volume = row['Volume']
+            volume_ma20 = row['Volume_MA20']
             z_score = row['Z-Score']
             adx = row['ADX']
             atr = row['ATR']
@@ -76,25 +90,68 @@ class DualRegimeRiskManager:
             # [포지션이 있는 경우] 청산 및 손절(Stop-Loss) 로직
             # ----------------------------------------------------
             if position > 0:
+                current_profit_pct = ((high - entry_price) / entry_price) * 100
+                max_runup_pct = max(max_runup_pct, current_profit_pct)
+                
                 exit_signal = False
+                is_partial = False
                 reason = ""
-                profit_pct = ((close - entry_price) / entry_price) * 100
+                sell_price = close
+                
+                # --- 0. 이월된 Next Day Open 매도 조건 (볼륨 클라이맥스) ---
+                if exit_next_open_flag:
+                    exit_signal = True
+                    reason = exit_next_open_reason
+                    sell_price = open_price
+                    exit_next_open_flag = False
 
-                # 1. 공통 목표/기본 청산 (익절 등 핵심 로직)
-                if mode == 'MR':
-                    # 3) MR: 정상 익절 (평균 회귀 완료, Z >= 0)
-                    if z_score >= 0:
-                        exit_signal, reason = True, "[MR 익절] 평균 회귀 달성 (Z>=0)"
-                elif mode == 'TF':
-                    # 변동성 트레일링 스톱 계산 (2 * ATR)
-                    current_ts = close - (2 * atr)
-                    trailing_stop_price = max(trailing_stop_price, current_ts)
-                    # 2) TF: 트레일링 스톱 이탈 손절
-                    if close < trailing_stop_price:
-                        exit_signal, reason = True, "[TF 청산] 트레일링 스톱 이탈"
-
-                # 2. 선택된 손절/강제청산 기준 적용
+                # --- 1. 단계별 익절/청산 시스템 ---
                 if not exit_signal:
+                    # 3단: Volume Climax (Price Action Exit) -> 다음 날 시가 매도 설정
+                    body = abs(close - open_price)
+                    upper_tail = high - max(close, open_price)
+                    is_bearish = close < open_price
+                    is_climax = volume >= 2 * volume_ma20
+                    if is_climax and (is_bearish or upper_tail > body):
+                        exit_next_open_flag = True
+                        exit_next_open_reason = "🚀 거래량 클라이맥스 (다음날 시가청산)"
+                        # 당일 매도 아님 (플래그만 세팅)
+
+                    # 1단: Partial Take-Profit (Volatility Stretch)
+                    volatility_band = ma20 + 3 * atr
+                    if high >= volatility_band and not partial_taken:
+                        exit_signal = True
+                        is_partial = True
+                        reason = "🎯 1차 익절 (MA20 + 3*ATR)"
+                        # 돌파 즉시 매도로 간주하여 터치 가격 편입
+                        sell_price = volatility_band
+
+                    # 2단: Trend Exhaustion Exit (Hurst Decay)
+                    if not exit_signal and not is_partial:
+                        if hurst < 0.55 and ((close - entry_price) > 0 or close > ma20):
+                            exit_signal = True
+                            reason = "📉 추세 동력 상실 (Hurst < 0.55)"
+                            sell_price = close
+
+                # --- 2. 공통 목표/기본 청산 (익절 등 핵심 로직) ---
+                if not exit_signal:
+                    if mode == 'MR':
+                        # 3) MR: 정상 익절 (평균 회귀 완료, Z >= 0)
+                        if z_score >= 0:
+                            exit_signal, reason = True, "[MR 익절] 평균 회귀 달성 (Z>=0)"
+                            sell_price = close
+                    elif mode == 'TF':
+                        # 변동성 트레일링 스톱 계산 (2 * ATR)
+                        current_ts = close - (2 * atr)
+                        trailing_stop_price = max(trailing_stop_price, current_ts)
+                        # 2) TF: 트레일링 스톱 이탈 손절
+                        if close < trailing_stop_price:
+                            exit_signal, reason = True, "[TF 청산] 트레일링 스톱 이탈"
+                            sell_price = close
+
+                # --- 3. UI에서 지정한 손절/강제청산 기준 적용 ---
+                if not exit_signal:
+                    profit_pct = ((close - entry_price) / entry_price) * 100
                     if self.stop_loss_type == "듀얼 국면 리스크 모델":
                         if mode == 'MR':
                             if z_score <= -3.5:
@@ -105,7 +162,7 @@ class DualRegimeRiskManager:
                             if close < ma20:
                                 exit_signal, reason = True, "[TF 청산] 기준선(MA20) 하향 돌파"
                     else:
-                        # UI에서 강제 지정한 커스텀 손절 로직
+                        # 추가 커스텀
                         if self.stop_loss_type == "ADX 25 돌파 시 (추세 강제청산)" and adx >= 25:
                             exit_signal, reason = True, "📉 추세청산 (ADX 25+)"
                         elif self.stop_loss_type == "-3% 수익률 손절" and profit_pct <= -3:
@@ -121,12 +178,16 @@ class DualRegimeRiskManager:
                         if not exit_signal and mode == 'TF' and close < ma20:
                             exit_signal, reason = True, "[TF 청산] 기준선(MA20) 하향 돌파"
 
+                # --- 매도 실행 로직 ---
                 if exit_signal:
-                    gross_return = (close / entry_price) - 1
+                    gross_return = (sell_price / entry_price) - 1
                     net_return = gross_return - (self.tx_cost * 2) # 왕복 수수료 차감
                     
-                    pnl = position * close * (1 - self.tx_cost) - (position * entry_price)
-                    capital += (position * close) * (1 - self.tx_cost) # 매도
+                    sell_ratio = 0.5 if is_partial else 1.0
+                    sell_amount = position * sell_ratio
+                    
+                    pnl = sell_amount * sell_price * (1 - self.tx_cost) - (sell_amount * entry_price)
+                    capital += (sell_amount * sell_price) * (1 - self.tx_cost) # 매도
                     
                     self.trade_logs.append({
                         "Date": date.strftime('%Y-%m-%d'),
@@ -134,18 +195,26 @@ class DualRegimeRiskManager:
                         "Regime": mode,
                         "Type": reason,
                         "Entry Price": round(entry_price, 2),
-                        "Exit Price": round(close, 2),
+                        "Exit Price": round(sell_price, 2),
                         "Net PnL": round(pnl, 2),
-                        "Return(%)": round(net_return * 100, 2)
+                        "Return(%)": round(net_return * 100, 2),
+                        "Max_Runup(%)": round(max_runup_pct, 2)
                     })
                     
-                    position = 0
-                    mode = None
+                    if is_partial:
+                        position -= sell_amount
+                        partial_taken = True
+                    else:
+                        position = 0
+                        mode = None
+                        partial_taken = False
+                        max_runup_pct = 0.0
+                        exit_next_open_flag = False
 
             # ----------------------------------------------------
             # [포지션이 없는 경우] Regime Switching 기반 진입 로직
             # ----------------------------------------------------
-            if position == 0:
+            if position == 0 and not exit_next_open_flag:
                 # 1. 평균회귀(MR) 국면 (Hurst < 0.45)
                 if hurst < 0.45 and z_score <= -2.0:
                     mode = 'MR'
@@ -161,6 +230,8 @@ class DualRegimeRiskManager:
                     entry_price = close
                     entry_date = date.strftime("%Y-%m-%d")
                     capital -= (buy_size + capital * self.tx_cost)
+                    partial_taken = False
+                    max_runup_pct = 0.0
 
             # Mark to Market (일일 자본금 평가)
             current_equity = capital + (position * close) if position > 0 else capital
@@ -185,12 +256,25 @@ class DualRegimeRiskManager:
         # Sharpe Ratio (무위험 수익률 0% 가정)
         sharpe = (returns.mean() / returns.std()) * np.sqrt(252) if returns.std() != 0 else 0
         
-        # Win Rate
-        if len(self.trade_logs) > 0:
-            win_trades = sum(1 for log in self.trade_logs if log['Return(%)'] > 0)
-            win_rate = win_trades / len(self.trade_logs)
-        else:
-            win_rate = 0.0
+        win_trades = 0
+        total_tp_return = 0
+        profit_retention_sum = 0
+        total_trades = len(self.trade_logs)
+
+        for log in self.trade_logs:
+            ret = log['Return(%)']
+            if ret > 0:
+                win_trades += 1
+                total_tp_return += ret
+                
+                max_run = log.get('Max_Runup(%)', 0)
+                if max_run > 0:
+                    retention = (ret / max_run) * 100
+                    profit_retention_sum += retention
+                    
+        win_rate = win_trades / total_trades if total_trades > 0 else 0.0
+        avg_tp_return = total_tp_return / win_trades if win_trades > 0 else 0.0
+        avg_retention = profit_retention_sum / win_trades if win_trades > 0 else 0.0
 
         return {
             "Total Return(%)": round((equity_curve[-1]-1) * 100, 2),
@@ -198,7 +282,9 @@ class DualRegimeRiskManager:
             "MDD(%)": round(mdd * 100, 2),
             "Sharpe Ratio": round(sharpe, 2),
             "Win Rate(%)": round(win_rate * 100, 2),
-            "Total Trades": len(self.trade_logs)
+            "Average TP Return(%)": round(avg_tp_return, 2),
+            "Profit Retention(%)": round(avg_retention, 2),
+            "Total Trades": total_trades
         }
 
 # =====================================================================
