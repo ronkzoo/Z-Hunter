@@ -610,6 +610,9 @@ with tab_scan:
         avg_win_rate = df_summary["승률(%)"].mean()
         avg_trades = df_summary["거래횟수"].mean()
         
+        profitable_count = (df_summary["수익률(%)"] >= 0).sum()
+        loss_count = (df_summary["수익률(%)"] < 0).sum()
+        
         if "총수익금(원)" in df_summary.columns and "최종잔고(원)" in df_summary.columns:
             avg_profit = df_summary["총수익금(원)"].astype(str).str.replace(",", "").astype(float).mean()
             avg_balance = df_summary["최종잔고(원)"].astype(str).str.replace(",", "").astype(float).mean()
@@ -632,6 +635,10 @@ with tab_scan:
             c6.metric("🔄 평균 거래횟수", f"{avg_trades:.1f}회")
         else:
             c5.metric("🔄 평균 거래횟수", f"{avg_trades:.1f}회")
+            
+        c7, c8 = st.columns(2)
+        c7.metric("📈 수익 종목 수", f"{profitable_count}개")
+        c8.metric("📉 손실 종목 수", f"{loss_count}개")
         
         st.markdown("")
 
