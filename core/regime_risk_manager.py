@@ -3,6 +3,7 @@ import pandas as pd
 import yfinance as yf
 import pandas_ta as ta
 from typing import Tuple, Dict
+from core.indicators import calculate_hurst, add_zscore_features, add_adx_feature
 
 class DualRegimeRiskManager:
     """
@@ -20,14 +21,6 @@ class DualRegimeRiskManager:
         self.data = pd.DataFrame()
         self.trade_logs = []
 
-    def _calc_hurst(self, ts: pd.Series, max_lag: int = 20) -> float:
-        """Rescaled Range 변형을 이용한 Hurst Exponent 산출"""
-        if len(ts) < max_lag:
-            return np.nan
-        lags = range(2, max_lag)
-        tau = [np.sqrt(np.std(np.subtract(ts[lag:], ts[:-lag]))) for lag in lags]
-        poly = np.polyfit(np.log(lags), np.log(tau), 1)
-        return poly[0] * 2.0
 
     def prepare_market_data(self) -> pd.DataFrame:
         """시장 데이터 다운로드 및 국면/리스크 기술적 지표 생성"""
@@ -38,20 +31,17 @@ class DualRegimeRiskManager:
         df = df[['Open', 'High', 'Low', 'Close']].copy()
 
         # 1. 기술적 지표 계산
-        df['MA20'] = df['Close'].rolling(window=20).mean()
-        df['STD20'] = df['Close'].rolling(window=20).std()
-        df['Z-Score'] = (df['Close'] - df['MA20']) / df['STD20']
+        df = add_zscore_features(df, window=20, ma_name='MA20', std_name='STD20', z_name='Z-Score')
         
         # breakout 기준선: 전일 기준 최근 20일 고가 (Lookahead Bias 방지)
         df['High_20'] = df['High'].rolling(window=20).max().shift(1)
         
         # 리스크 지표 (ADX, ATR)
-        adx_df = df.ta.adx(length=14)
-        df['ADX'] = adx_df['ADX_14'] if adx_df is not None else 0
+        df = add_adx_feature(df, length=14, adx_name='ADX')
         df['ATR'] = df.ta.atr(length=14)
         
         # 2. Regime 판별 지표 (Hurst Exponent - 100일 윈도우)
-        df['Hurst'] = df['Close'].rolling(100).apply(self._calc_hurst, raw=True)
+        df['Hurst'] = df['Close'].rolling(100).apply(calculate_hurst, raw=True)
         
         # 결측치 제거
         self.data = df.dropna().copy()
