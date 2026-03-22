@@ -605,6 +605,27 @@ with tab_scan:
         
         st.subheader("🏆 백테스트 요약 결과 Top Rank (클릭하여 상세 내역 확인)")
         
+        # 요약 평균 지표를 화면에 표시
+        avg_return = df_summary["수익률(%)"].mean()
+        avg_win_rate = df_summary["승률(%)"].mean()
+        avg_trades = df_summary["거래횟수"].mean()
+        
+        if "MDD(%)" in df_summary.columns:
+            df_summary["MDD(%)"] = df_summary["MDD(%)"].astype(float)
+            avg_mdd = df_summary["MDD(%)"].mean()
+            col1, col2, col3, col4 = st.columns(4)
+            col1.metric("📌 평균 수익률", f"{avg_return:.2f}%")
+            col2.metric("🎯 평균 승률", f"{avg_win_rate:.2f}%")
+            col3.metric("📉 평균 MDD", f"{avg_mdd:.2f}%")
+            col4.metric("🔄 평균 거래횟수", f"{avg_trades:.1f}회")
+        else:
+            col1, col2, col3 = st.columns(3)
+            col1.metric("📌 평균 수익률", f"{avg_return:.2f}%")
+            col2.metric("🎯 평균 승률", f"{avg_win_rate:.2f}%")
+            col3.metric("🔄 평균 거래횟수", f"{avg_trades:.1f}회")
+        
+        st.markdown("")
+
         # 데이터프레임 예쁘게 출력 및 선택 기능 추가
         st_styled = df_summary.style.format({
             "수익률(%)": "{:.2f}",
